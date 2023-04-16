@@ -185,6 +185,7 @@ static ucs_status_t uct_mm_iface_query(uct_iface_h tl_iface,
     iface_attr->cap.flags               = UCT_IFACE_FLAG_PUT_SHORT           |
                                           UCT_IFACE_FLAG_PUT_BCOPY           |
                                           UCT_IFACE_FLAG_ATOMIC_CPU          |
+                                          UCT_IFACE_FLAG_ATOMIC_DEVICE       |
                                           UCT_IFACE_FLAG_GET_BCOPY           |
                                           UCT_IFACE_FLAG_AM_SHORT            |
                                           UCT_IFACE_FLAG_AM_BCOPY            |

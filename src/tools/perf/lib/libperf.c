@@ -1752,41 +1752,41 @@ ucs_status_t ucx_perf_run(const ucx_perf_params_t *params,
 
     ucx_perf_test_init(perf, params);
 
-    if ((perf->send_allocator == NULL) || (perf->recv_allocator == NULL)) {
-        ucs_error("Unsupported memory types %s<->%s",
-                  ucs_memory_type_names[params->send_mem_type],
-                  ucs_memory_type_names[params->recv_mem_type]);
-        status = UCS_ERR_UNSUPPORTED;
-        goto out_free;
-    }
+    // if ((perf->send_allocator == NULL) || (perf->recv_allocator == NULL)) {
+    //     ucs_error("Unsupported memory types %s<->%s",
+    //               ucs_memory_type_names[params->send_mem_type],
+    //               ucs_memory_type_names[params->recv_mem_type]);
+    //     status = UCS_ERR_UNSUPPORTED;
+    //     goto out_free;
+    // }
 
-    if (params->api == UCX_PERF_API_UCT) {
-        if (perf->send_allocator->mem_type != UCS_MEMORY_TYPE_HOST) {
-            ucs_diag("UCT tests also copy one-byte value from %s memory to "
-                     "%s send memory, which may impact performance results",
-                     ucs_memory_type_names[UCS_MEMORY_TYPE_HOST],
-                     ucs_memory_type_names[perf->send_allocator->mem_type]);
-        }
+    // if (params->api == UCX_PERF_API_UCT) {
+    //     if (perf->send_allocator->mem_type != UCS_MEMORY_TYPE_HOST) {
+    //         ucs_diag("UCT tests also copy one-byte value from %s memory to "
+    //                  "%s send memory, which may impact performance results",
+    //                  ucs_memory_type_names[UCS_MEMORY_TYPE_HOST],
+    //                  ucs_memory_type_names[perf->send_allocator->mem_type]);
+    //     }
 
-        if (perf->recv_allocator->mem_type != UCS_MEMORY_TYPE_HOST) {
-            ucs_diag("UCT tests also copy one-byte value from %s recv memory "
-                     "to %s memory, which may impact performance results",
-                     ucs_memory_type_names[perf->recv_allocator->mem_type],
-                     ucs_memory_type_names[UCS_MEMORY_TYPE_HOST]);
-        }
-    }
+    //     if (perf->recv_allocator->mem_type != UCS_MEMORY_TYPE_HOST) {
+    //         ucs_diag("UCT tests also copy one-byte value from %s recv memory "
+    //                  "to %s memory, which may impact performance results",
+    //                  ucs_memory_type_names[perf->recv_allocator->mem_type],
+    //                  ucs_memory_type_names[UCS_MEMORY_TYPE_HOST]);
+    //     }
+    // }
 
-    status = perf->send_allocator->init(perf);
-    if (status != UCS_OK) {
-        goto out_free;
-    }
+    // status = perf->send_allocator->init(perf);
+    // if (status != UCS_OK) {
+    //     goto out_free;
+    // }
 
-    if (perf->send_allocator != perf->recv_allocator) {
-        status = perf->recv_allocator->init(perf);
-        if (status != UCS_OK) {
-            goto out_free;
-        }
-    }
+    // if (perf->send_allocator != perf->recv_allocator) {
+    //     status = perf->recv_allocator->init(perf);
+    //     if (status != UCS_OK) {
+    //         goto out_free;
+    //     }
+    // }
 
     status = ucx_perf_funcs[params->api].setup(perf);
     if (status != UCS_OK) {

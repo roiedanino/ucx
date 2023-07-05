@@ -172,6 +172,10 @@ size_t ucx_perf_get_message_size(const ucx_perf_params_t *params);
 
 void ucx_perf_report(ucx_perf_context_t *perf);
 
+void ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
+                               const void *src, ucs_memory_type_t src_mem_type,
+                               size_t count);
+
 
 static UCS_F_ALWAYS_INLINE int ucx_perf_context_done(ucx_perf_context_t *perf)
 {

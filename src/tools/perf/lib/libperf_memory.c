@@ -168,7 +168,7 @@ void ucp_perf_test_free_mem(ucx_perf_context_t *perf)
     ucp_perf_mem_free(perf, perf->ucp.send_memh);
 }
 
-static void
+void
 ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
                           const void *src, ucs_memory_type_t src_mem_type,
                           size_t count)
@@ -220,6 +220,8 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
         buffer_size = ucx_perf_get_message_size(params);
     }
 
+    buffer_size *= params->thread_count;
+
     /* TODO use params->alignment  */
 
     flags = UCT_MD_MEM_ACCESS_LOCAL_READ | UCT_MD_MEM_ACCESS_LOCAL_WRITE;
@@ -246,10 +248,8 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
     }
 
     /* Allocate send buffer memory */
-    status = perf->send_allocator->uct_alloc(perf,
-                                             buffer_size * params->thread_count,
-                                             flags, &perf->uct.send_mem);
-
+    status = uct_iface_mem_alloc(perf->uct.iface, buffer_size, flags,
+                                 "uct perftest sender", &perf->uct.send_mem);
     if (status != UCS_OK) {
         goto err;
     }
@@ -257,9 +257,9 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
     perf->send_buffer = perf->uct.send_mem.address;
 
     /* Allocate receive buffer memory */
-    status = perf->recv_allocator->uct_alloc(perf,
-                                             buffer_size * params->thread_count,
-                                             flags, &perf->uct.recv_mem);
+    status = uct_iface_mem_alloc(perf->uct.iface, buffer_size, flags,
+                                "uct perftest sender", &perf->uct.recv_mem);
+
     if (status != UCS_OK) {
         goto err_free_send;
     }
@@ -283,9 +283,10 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
     return UCS_OK;
 
 err_free_recv:
-    perf->recv_allocator->uct_free(perf, &perf->uct.recv_mem);
+    uct_mem_free(&perf->uct.recv_mem);
+
 err_free_send:
-    perf->send_allocator->uct_free(perf, &perf->uct.send_mem);
+    uct_mem_free(&perf->uct.send_mem);
 err:
     return status;
 }

@@ -82,9 +82,6 @@ struct ucx_perf_context {
     ucs_time_t                   timing_queue[TIMING_QUEUE_SIZE];
     unsigned                     timing_queue_head;
 
-    const ucx_perf_allocator_t   *send_allocator;
-    const ucx_perf_allocator_t   *recv_allocator;
-
     char                         extra_info[EXTRA_INFO_SIZE];
 
     union {

@@ -183,30 +183,6 @@ ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
     }
 }
 
-static ucs_status_t
-uct_perf_test_alloc_host(const ucx_perf_context_t *perf, size_t length,
-                         unsigned flags, uct_allocated_memory_t *alloc_mem)
-{
-    ucs_status_t status;
-
-    status = uct_iface_mem_alloc(perf->uct.iface, length,
-                                 flags, "perftest", alloc_mem);
-    if (status != UCS_OK) {
-        ucs_error("failed to allocate memory: %s", ucs_status_string(status));
-        return status;
-    }
-
-    ucs_assert(alloc_mem->md == perf->uct.md);
-
-    return UCS_OK;
-}
-
-static void uct_perf_test_free_host(const ucx_perf_context_t *perf,
-                                    uct_allocated_memory_t *alloc_mem)
-{
-    uct_iface_mem_free(alloc_mem);
-}
-
 ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
 {
     ucx_perf_params_t *params = &perf->params;
@@ -283,34 +259,24 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
     return UCS_OK;
 
 err_free_recv:
-    uct_mem_free(&perf->uct.recv_mem);
+    uct_iface_mem_free(&perf->uct.recv_mem);
 
 err_free_send:
-    uct_mem_free(&perf->uct.send_mem);
+    uct_iface_mem_free(&perf->uct.send_mem);
 err:
     return status;
 }
 
 void uct_perf_test_free_mem(ucx_perf_context_t *perf)
 {
-    perf->send_allocator->uct_free(perf, &perf->uct.send_mem);
-    perf->recv_allocator->uct_free(perf, &perf->uct.recv_mem);
+    uct_iface_mem_free(&perf->uct.send_mem);
+    uct_iface_mem_free(&perf->uct.recv_mem);
     free(perf->uct.iov);
 }
 
 void ucx_perf_global_init()
 {
-    static ucx_perf_allocator_t host_allocator = {
-        .mem_type  = UCS_MEMORY_TYPE_HOST,
-        .init      = ucs_empty_function_return_success,
-        .uct_alloc = uct_perf_test_alloc_host,
-        .uct_free  = uct_perf_test_free_host,
-        .memcpy    = ucx_perf_test_memcpy_host,
-        .memset    = memset
-    };
     UCS_MODULE_FRAMEWORK_DECLARE(ucx_perftest);
-
-    ucx_perf_mem_type_allocators[UCS_MEMORY_TYPE_HOST] = &host_allocator;
 
     /* FIXME Memtype allocator modules must be loaded to global scope, otherwise
      * alloc hooks, which are using dlsym() to get pointer to original function,

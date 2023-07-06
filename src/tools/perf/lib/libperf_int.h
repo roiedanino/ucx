@@ -43,19 +43,6 @@ typedef struct ucp_perf_request        ucp_perf_request_t;
 typedef struct ucx_perf_thread_context ucx_perf_thread_context_t;
 
 
-struct ucx_perf_allocator {
-    ucs_memory_type_t mem_type;
-    ucs_status_t (*init)(ucx_perf_context_t *perf);
-    ucs_status_t (*uct_alloc)(const ucx_perf_context_t *perf, size_t length,
-                              unsigned flags, uct_allocated_memory_t *alloc_mem);
-    void         (*uct_free)(const ucx_perf_context_t *perf,
-                             uct_allocated_memory_t *alloc_mem);
-    void         (*memcpy)(void *dst, ucs_memory_type_t dst_mem_type,
-                           const void *src, ucs_memory_type_t src_mem_type,
-                           size_t count);
-    void*        (*memset)(void *dst, int value, size_t count);
-};
-
 struct ucx_perf_context {
     ucx_perf_params_t            params;
 
@@ -169,9 +156,9 @@ size_t ucx_perf_get_message_size(const ucx_perf_params_t *params);
 
 void ucx_perf_report(ucx_perf_context_t *perf);
 
-void ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
-                               const void *src, ucs_memory_type_t src_mem_type,
-                               size_t count);
+void ucx_perf_test_memcpy(ucx_perf_context_t *perf, void *dst,
+                          ucs_memory_type_t dst_mem_type, const void *src,
+                          ucs_memory_type_t src_mem_type, size_t length);
 
 
 static UCS_F_ALWAYS_INLINE int ucx_perf_context_done(ucx_perf_context_t *perf)

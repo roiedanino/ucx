@@ -375,23 +375,22 @@ public:
         if (mem_type == UCS_MEMORY_TYPE_HOST) {
             return *(const volatile psn_t*)ptr;
         } else {
-            ucx_perf_test_memcpy_host(&sn, UCS_MEMORY_TYPE_HOST, ptr, mem_type,
-                                      sizeof(sn));
+            ucx_perf_test_memcpy(&m_perf, &sn, UCS_MEMORY_TYPE_HOST, ptr,
+                                 mem_type, sizeof(sn));
             return sn;
         }
     }
 
     UCS_F_ALWAYS_INLINE void
-    write_sn(void *buffer, ucs_memory_type_t mem_type,
-             size_t length, psn_t sn)
+    write_sn(void *buffer, ucs_memory_type_t mem_type, size_t length, psn_t sn)
     {
         void *ptr = sn_ptr(buffer, length);
 
         if (mem_type == UCS_MEMORY_TYPE_HOST) {
             *(volatile psn_t*)ptr = sn;
         } else {
-            ucx_perf_test_memcpy_host(ptr, mem_type, &sn, UCS_MEMORY_TYPE_HOST,
-                              sizeof(sn));
+            ucx_perf_test_memcpy(&m_perf, ptr, mem_type, &sn,
+                                 UCS_MEMORY_TYPE_HOST, sizeof(sn));
         }
     }
 

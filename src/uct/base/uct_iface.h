@@ -867,6 +867,9 @@ void uct_iface_get_local_address(uct_iface_local_addr_ns_t *addr_ns,
 int uct_iface_local_is_reachable(uct_iface_local_addr_ns_t *addr_ns,
                                  ucs_sys_namespace_type_t sys_ns_type);
 
+int uct_iface_is_allowed_alloc_method(uct_base_iface_t *iface,
+                                      uct_alloc_method_t method);
+
 /*
  * Invoke active message handler.
  *

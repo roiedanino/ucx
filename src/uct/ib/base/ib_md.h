@@ -14,6 +14,9 @@
 #include <uct/base/uct_md.h>
 #include <ucs/stats/stats.h>
 
+#include <infiniband/verbs.h>
+
+
 #define UCT_IB_MD_MAX_MR_SIZE        0x80000000UL
 #define UCT_IB_MD_PACKED_RKEY_SIZE   sizeof(uint64_t)
 #define UCT_IB_MD_INVALID_FLUSH_RKEY 0xff
@@ -106,12 +109,19 @@ typedef struct uct_ib_md_ext_config {
 
 
 typedef struct uct_ib_mem {
-    uint32_t                lkey;
-    uint32_t                exported_lkey;
-    uint32_t                rkey;
-    uint32_t                atomic_rkey;
-    uint32_t                indirect_rkey;
-    uint32_t                flags;
+    uint32_t lkey;
+    uint32_t exported_lkey;
+    uint32_t rkey;
+    uint32_t atomic_rkey;
+    uint32_t indirect_rkey;
+    uint32_t flags;
+
+#if HAVE_IBV_DM
+    struct ibv_dm *dm;
+    void          *mmapped_addr;
+    size_t        length;
+#endif
+
 } uct_ib_mem_t;
 
 
@@ -162,6 +172,7 @@ typedef struct uct_ib_md {
      * be initiated.  */
     uint32_t                 flush_rkey;
     uct_ib_uint128_t         vhca_id;
+    size_t                   alloc_align;
 } uct_ib_md_t;
 
 
@@ -195,6 +206,30 @@ typedef struct uct_ib_md_config {
     int                      enable_gpudirect_rdma; /**< Enable GPUDirect RDMA */
 } uct_ib_md_config_t;
 
+
+/**
+ * IB memory registration internal parameters
+ */
+typedef struct {
+    unsigned      flags;         /* IB verbs access flags (e.g. remote get)*/
+    int           dmabuf_fd;     /* dmabuf file descriptor of the memory 
+                                  * region to register. */
+    size_t        dmabuf_offset; /* specifies the offset of the region to 
+                                  * register relative to the start of
+                                  * the underlying dmabuf region. */
+    struct ibv_dm *dm;           /* Pointer to an allocated device memory */
+} uct_ib_mem_reg_internal_params_t;
+
+
+/**
+ * IB memory get device memory mapped address parameters
+ */
+typedef struct {
+    size_t        length; /* Length of the mapped memory */
+    struct ibv_dm *dm;    /* Pointer to the device memory being mapped*/
+} uct_ib_mem_get_addr_params_t;
+
+
 /**
  * Memory domain constructor.
  *
@@ -220,24 +255,18 @@ typedef ucs_status_t (*uct_ib_md_open_func_t)(struct ibv_device *ibv_device,
  * @param [in]  length         Memory area length.
  *
  * @param [in]  access         IB verbs registration access flags.
- *
- * @param [in]  dmabuf_fd      dmabuf file descriptor.
- *
- * @param [in]  dmabuf_offset  Offset of the registered memory region within the
- *                             dmabuf backing region.
+ * 
+ * @param [in]  params         IB memory registration params (e.g. dmabuf_fd)
  *
  * @param [in]  memh           Memory region handle.
  *                             The method must initialize lkey & rkey.
  *
  * @return UCS_OK on success or error code in case of failure.
  */
-typedef ucs_status_t (*uct_ib_md_reg_key_func_t)(struct uct_ib_md *md,
-                                                 void *address, size_t length,
-                                                 uint64_t access, int dmabuf_fd,
-                                                 size_t dmabuf_offset,
-                                                 uct_ib_mem_t *memh,
-                                                 uct_ib_mr_type_t mr_type,
-                                                 int silent);
+typedef ucs_status_t (*uct_ib_md_reg_key_func_t)(
+        struct uct_ib_md *md, void *address, size_t length, uint64_t access,
+        const uct_ib_mem_reg_internal_params_t *params, uct_ib_mem_t *memh,
+        uct_ib_mr_type_t mr_type, int silent);
 
 /**
  * Memory domain method to deregister memory area.
@@ -359,6 +388,18 @@ typedef ucs_status_t (*uct_ib_md_reg_exported_key_func_t)(
         uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh);
 
 
+
+/**
+ * @param [in]  ib_md          Memory domain.
+ * @param [in]  params         Contains mapped memory length and a pointer to device memory
+ * 
+ * @return                     Mapped address for accessing the device memory.
+ */
+
+typedef void *(*uct_ib_md_get_device_addr_func_t)(
+        uct_ib_md_t *ib_md, uct_ib_mem_get_addr_params_t *params);
+
+
 typedef struct uct_ib_md_ops {
     uct_md_ops_t                         super;
     uct_ib_md_open_func_t                open;
@@ -371,6 +412,7 @@ typedef struct uct_ib_md_ops {
     uct_ib_md_dereg_multithreaded_func_t dereg_multithreaded;
     uct_ib_md_get_atomic_mr_id_func_t    get_atomic_mr_id;
     uct_ib_md_reg_exported_key_func_t    reg_exported_key;
+    uct_ib_md_get_device_addr_func_t     get_dev_addr;
 } uct_ib_md_ops_t;
 
 
@@ -605,7 +647,8 @@ void uct_ib_md_free(uct_ib_md_t *md);
 void uct_ib_md_close(uct_md_h tl_md);
 
 ucs_status_t uct_ib_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
-                           uint64_t access, int dmabuf_fd, size_t dmabuf_offset,
+                           uint64_t access,
+                           const uct_ib_mem_reg_internal_params_t *params,
                            struct ibv_mr **mr_p, int silent);
 ucs_status_t uct_ib_dereg_mr(struct ibv_mr *mr);
 ucs_status_t uct_ib_dereg_mrs(struct ibv_mr **mrs, size_t mr_num);
@@ -624,9 +667,25 @@ uct_ib_md_handle_mr_list_multithreaded(uct_ib_md_t *md, void *address,
                                        int silent);
 
 ucs_status_t uct_ib_reg_key_impl(uct_ib_md_t *md, void *address, size_t length,
-                                 uint64_t access_flags, int dmabuf_fd,
-                                 size_t dmabuf_offset, uct_ib_mem_t *memh,
-                                 uct_ib_mr_t *mr, uct_ib_mr_type_t mr_type,
-                                 int silent);
+                                 uint64_t access_flags,
+                                 const uct_ib_mem_reg_internal_params_t *params,
+                                 uct_ib_mem_t *memh, uct_ib_mr_t *mr,
+                                 uct_ib_mr_type_t mr_type, int silent);
 
+ucs_status_t
+uct_ib_mem_dereg(uct_md_h uct_md, const uct_md_mem_dereg_params_t *params);
+
+
+#if HAVE_IBV_DM
+ucs_status_t uct_ib_device_mem_alloc(uct_md_h md, size_t *length_p,
+                                     void **address_p,
+                                     ucs_memory_type_t mem_type, unsigned flags,
+                                     const char *alloc_name, uct_mem_h *memh_p);
+
+ucs_status_t uct_ib_device_mem_free(uct_md_h md, uct_mem_h memh);
+#endif
+
+
+void *uct_ib_get_dev_addr_impl(uct_ib_md_t *ib_md,
+                               uct_ib_mem_get_addr_params_t *params);
 #endif

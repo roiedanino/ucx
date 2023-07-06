@@ -717,6 +717,8 @@ uct_rc_mlx5_iface_common_dm_tl_init(uct_mlx5_dm_data_t *data,
     dm_attr.comp_mask  = 0;
     data->dm           = ibv_alloc_dm(data->device->ibv_context, &dm_attr);
 
+    ucs_debug("uct_rc_mlx5_iface_common_dm_tl_init - Allocating %lu bytes using ibv_alloc_dm", dm_attr.length);
+
     if (data->dm == NULL) {
         /* TODO: prompt warning? */
         ucs_debug("ibv_alloc_dm(dev=%s length=%zu) failed: %m",

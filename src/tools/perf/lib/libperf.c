@@ -66,8 +66,6 @@ typedef struct {
 } ucp_perf_flush_context_t;
 
 
-const ucx_perf_allocator_t* ucx_perf_mem_type_allocators[UCS_MEMORY_TYPE_LAST];
-
 static const char *perf_iface_ops[] = {
     [ucs_ilog2(UCT_IFACE_FLAG_AM_SHORT)]         = "am short",
     [ucs_ilog2(UCT_IFACE_FLAG_AM_BCOPY)]         = "am bcopy",
@@ -208,13 +206,6 @@ void ucx_perf_test_prepare_new_run(ucx_perf_context_t *perf,
         perf->timing_queue[i] = 0;
     }
     ucx_perf_test_start_clock(perf);
-}
-
-static void ucx_perf_test_init(ucx_perf_context_t *perf,
-                               const ucx_perf_params_t *params)
-{
-    perf->params = *params;
-    ucx_perf_test_prepare_new_run(perf, params);
 }
 
 void ucx_perf_calc_result(ucx_perf_context_t *perf, ucx_perf_result_t *result)
@@ -1721,8 +1712,6 @@ ucs_status_t ucx_perf_run(const ucx_perf_params_t *params,
     ucx_perf_context_t *perf;
     ucs_status_t status;
 
-    ucx_perf_global_init();
-
     if (params->command == UCX_PERF_CMD_LAST) {
         ucs_error("Test is not selected");
         status = UCS_ERR_INVALID_PARAM;
@@ -1741,7 +1730,8 @@ ucs_status_t ucx_perf_run(const ucx_perf_params_t *params,
         goto out;
     }
 
-    ucx_perf_test_init(perf, params);
+    perf->params = *params;
+    ucx_perf_test_prepare_new_run(perf, params);
 
     status = ucx_perf_funcs[params->api].setup(perf);
     if (status != UCS_OK) {

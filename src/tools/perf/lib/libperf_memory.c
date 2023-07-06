@@ -13,6 +13,8 @@
 #include <ucs/sys/module.h>
 #include <ucs/sys/string.h>
 
+#include <uct/base/uct_iface.h>
+
 #include <tools/perf/lib/libperf_int.h>
 
 #include <string.h>
@@ -168,10 +170,38 @@ void ucp_perf_test_free_mem(ucx_perf_context_t *perf)
     ucp_perf_mem_free(perf, perf->ucp.send_memh);
 }
 
-void
-ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
-                          const void *src, ucs_memory_type_t src_mem_type,
-                          size_t count)
+
+void ucx_perf_test_memcpy(ucx_perf_context_t *perf, void *dst,
+                          ucs_memory_type_t dst_mem_type, const void *src,
+                          ucs_memory_type_t src_mem_type, size_t length)
+{
+    // unsigned group_size             = rte_call(perf, group_size);
+    // unsigned group_index            = rte_call(perf, group_index);
+    // unsigned peer_index             = rte_peer_index(group_size, group_index);
+    // uct_rkey_t rkey                 = perf->uct.peers[peer_index].rkey.rkey;
+    // uct_ep_h ep                     = perf->uct.peers[peer_index].ep;
+    // ucs_status_t status = UCS_OK;
+
+    memcpy(dst, src, length);
+
+    // if (((dst_mem_type == UCS_MEMORY_TYPE_HOST) &&
+    //      (src_mem_type == UCS_MEMORY_TYPE_HOST)) ||
+    //     (dst_mem_type == UCS_MEMORY_TYPE_RDMA ||
+    //      src_mem_type == UCS_MEMORY_TYPE_RDMA)) {
+    //     memcpy(dst, src, length);
+    // } else if (dst_mem_type != UCS_MEMORY_TYPE_HOST) {
+    //     status = uct_ep_put_short(ep, src, length, (uint64_t)dst, rkey);
+    // } else {
+    //     status = uct_ep_get_short(ep, dst, length, (uint64_t)src, rkey);
+    // }
+    // if (status != UCS_OK) {
+    //     ucs_error("Failed at memcpy, status: %d", status);
+    // }
+}
+
+void ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
+                               const void *src, ucs_memory_type_t src_mem_type,
+                               size_t count)
 {
     if ((dst_mem_type != UCS_MEMORY_TYPE_HOST) ||
         (src_mem_type != UCS_MEMORY_TYPE_HOST)) {
@@ -181,6 +211,82 @@ ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
     } else {
         memcpy(dst, src, count);
     }
+}
+
+ucs_status_t uct_perf_test_alloc_mem_by_mem_type(ucx_perf_context_t *perf,
+                                                 const char *name, size_t size,
+                                                 unsigned flags,
+                                                 ucs_memory_type_t mem_type,
+                                                 uct_allocated_memory_t *mem)
+{
+    static uct_alloc_method_t method_md = UCT_ALLOC_METHOD_MD;
+    uct_base_iface_t *iface = ucs_derived_of(perf->uct.iface, uct_base_iface_t);
+    uct_mem_alloc_params_t params;
+    uct_alloc_method_t *alloc_methods;
+    unsigned num_alloc_methods;
+    uct_md_attr_t md_attr;
+    ucs_status_t status;
+
+    status = uct_md_query(perf->uct.md, &md_attr);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    if (!(md_attr.cap.flags & UCT_MD_FLAG_REG) &&
+        uct_iface_is_allowed_alloc_method(iface, UCT_ALLOC_METHOD_MD)) {
+        /* If MD does not support registration, allow only the MD method */
+        alloc_methods     = &method_md;
+        num_alloc_methods = 1;
+    } else if (!(md_attr.cap.flags & UCT_MD_FLAG_REG)) {
+        /* If MD does not support registration and MD method is not in list
+         * return error */
+        return UCS_ERR_NO_MEMORY;
+    } else {
+        alloc_methods     = iface->config.alloc_methods;
+        num_alloc_methods = iface->config.num_alloc_methods;
+    }
+
+    params.field_mask = UCT_MEM_ALLOC_PARAM_FIELD_FLAGS |
+                        UCT_MEM_ALLOC_PARAM_FIELD_ADDRESS |
+                        UCT_MEM_ALLOC_PARAM_FIELD_MEM_TYPE |
+                        UCT_MEM_ALLOC_PARAM_FIELD_MDS |
+                        UCT_MEM_ALLOC_PARAM_FIELD_NAME;
+    params.flags      = flags;
+    params.name       = name;
+    params.mem_type   = mem_type;
+    params.address    = NULL;
+    params.mds.mds    = &perf->uct.md;
+    params.mds.count  = 1;
+
+    status = uct_mem_alloc(size, alloc_methods, num_alloc_methods, &params,
+                           mem);
+
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    /* If the memory was not allocated using MD, register it */
+    if (mem->method != UCT_ALLOC_METHOD_MD) {
+        if ((md_attr.cap.flags & UCT_MD_FLAG_REG) &&
+            (md_attr.cap.reg_mem_types & UCS_BIT(mem->mem_type))) {
+            status = uct_md_mem_reg(iface->md, mem->address, mem->length, flags,
+                                    &mem->memh);
+            if (status != UCS_OK) {
+                goto err_free;
+            }
+
+            ucs_assert(mem->memh != UCT_MEM_HANDLE_NULL);
+        } else {
+            mem->memh = UCT_MEM_HANDLE_NULL;
+        }
+
+        mem->md = iface->md;
+    }
+    return UCS_OK;
+
+err_free:
+    uct_mem_free(mem);
+    return status;
 }
 
 ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
@@ -223,9 +329,12 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
         flags |= UCT_MD_MEM_FLAG_NONBLOCK;
     }
 
+
     /* Allocate send buffer memory */
-    status = uct_iface_mem_alloc(perf->uct.iface, buffer_size, flags,
-                                 "uct perftest sender", &perf->uct.send_mem);
+    status = uct_perf_test_alloc_mem_by_mem_type(perf, "uct_perftest_send_mem",
+                                                 buffer_size, flags,
+                                                 params->send_mem_type,
+                                                 &perf->uct.send_mem);
     if (status != UCS_OK) {
         goto err;
     }
@@ -233,9 +342,10 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
     perf->send_buffer = perf->uct.send_mem.address;
 
     /* Allocate receive buffer memory */
-    status = uct_iface_mem_alloc(perf->uct.iface, buffer_size, flags,
-                                "uct perftest sender", &perf->uct.recv_mem);
-
+    status = uct_perf_test_alloc_mem_by_mem_type(perf, "uct_perftest_recv_mem",
+                                                 buffer_size, flags,
+                                                 params->recv_mem_type,
+                                                 &perf->uct.recv_mem);
     if (status != UCS_OK) {
         goto err_free_send;
     }
@@ -260,7 +370,6 @@ ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf)
 
 err_free_recv:
     uct_iface_mem_free(&perf->uct.recv_mem);
-
 err_free_send:
     uct_iface_mem_free(&perf->uct.send_mem);
 err:
@@ -272,15 +381,4 @@ void uct_perf_test_free_mem(ucx_perf_context_t *perf)
     uct_iface_mem_free(&perf->uct.send_mem);
     uct_iface_mem_free(&perf->uct.recv_mem);
     free(perf->uct.iov);
-}
-
-void ucx_perf_global_init()
-{
-    UCS_MODULE_FRAMEWORK_DECLARE(ucx_perftest);
-
-    /* FIXME Memtype allocator modules must be loaded to global scope, otherwise
-     * alloc hooks, which are using dlsym() to get pointer to original function,
-     * do not work. Need to use bistro for memtype hooks to fix it.
-     */
-    UCS_MODULE_FRAMEWORK_LOAD(ucx_perftest, UCS_MODULE_LOAD_FLAG_GLOBAL);
 }

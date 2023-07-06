@@ -133,32 +133,32 @@ public:
     inline void set_sn(void *dst_sn, ucs_memory_type_t dst_mem_type,
                        const void *src_sn) const
     {
-        if (ucs_likely(dst_mem_type == UCS_MEMORY_TYPE_HOST)) {
-            ucs_assert(dst_mem_type == UCS_MEMORY_TYPE_HOST);
+        if (ucs_likely(dst_mem_type == UCS_MEMORY_TYPE_HOST || dst_mem_type == UCS_MEMORY_TYPE_RDMA)) {
+            // ucs_assert(dst_mem_type == UCS_MEMORY_TYPE_HOST);
             *reinterpret_cast<psn_t*>(dst_sn) = *reinterpret_cast<const psn_t*>(src_sn);
         }
 
-        ucx_perf_test_memcpy_host(dst_sn, dst_mem_type, src_sn, UCS_MEMORY_TYPE_HOST,
-                          sizeof(psn_t));
+        ucx_perf_test_memcpy(&m_perf, dst_sn, dst_mem_type, src_sn,
+                             UCS_MEMORY_TYPE_HOST, sizeof(psn_t));
     }
 
     inline psn_t
     get_sn(const volatile void *sn, ucs_memory_type_t mem_type) const
     {
-        if (ucs_likely(mem_type == UCS_MEMORY_TYPE_HOST)) {
+        if (ucs_likely(mem_type == UCS_MEMORY_TYPE_HOST || mem_type == UCS_MEMORY_TYPE_RDMA)) {
             return *reinterpret_cast<const volatile psn_t*>(sn);
         }
 
         psn_t host_sn;
-        ucx_perf_test_memcpy_host(&host_sn, UCS_MEMORY_TYPE_HOST,
-                          const_cast<const void*>(sn), mem_type,
-                          sizeof(psn_t));
+        ucx_perf_test_memcpy(&m_perf, &host_sn, UCS_MEMORY_TYPE_HOST,
+                             const_cast<const void*>(sn), mem_type,
+                             sizeof(psn_t));
         return host_sn;
     }
 
-    inline void set_recv_sn(void *recv_sn,
-                            ucs_memory_type_t recv_mem_type,
-                            const void *src_sn) const {
+    inline void set_recv_sn(void *recv_sn, ucs_memory_type_t recv_mem_type,
+                            const void *src_sn) const
+    {
         if (CMD == UCX_PERF_CMD_AM) {
             ucs_assert(&m_last_recvd_sn == recv_sn);
             *(psn_t*)recv_sn = *(const psn_t*)src_sn;
@@ -168,7 +168,8 @@ public:
     }
 
     inline psn_t get_recv_sn(const volatile void *recv_sn,
-                             ucs_memory_type_t recv_mem_type) const {
+                             ucs_memory_type_t recv_mem_type) const
+    {
         if (CMD == UCX_PERF_CMD_AM) {
             /* it has to be updated after AM completion */
             ucs_assert(&m_last_recvd_sn == recv_sn);
@@ -209,12 +210,11 @@ public:
         uct_perf_test_runner *self = (uct_perf_test_runner *)arg;
         size_t length = ucx_perf_get_message_size(&self->m_perf.params);
 
-        ucx_perf_test_memcpy_host(/* we always assume that buffers
-                                             * provided by TLs are host memory */
-                                            dest, UCS_MEMORY_TYPE_HOST,
-                                            self->m_perf.send_buffer,
-                                            self->m_perf.uct.send_mem.mem_type,
-                                            length);
+        ucx_perf_test_memcpy(/* we always assume that buffers
+                              * provided by TLs are host memory */
+                             &self->m_perf, dest, UCS_MEMORY_TYPE_HOST,
+                             self->m_perf.send_buffer,
+                             self->m_perf.uct.send_mem.mem_type, length);
 
         return length;
     }
@@ -223,11 +223,11 @@ public:
     {
         uct_perf_test_runner *self = (uct_perf_test_runner *)arg;
 
-        ucx_perf_test_memcpy_host(self->m_perf.send_buffer,
-                                            self->m_perf.uct.send_mem.mem_type,
-                                            /* we always assume that buffers
-                                             * provided by TLs are host memory */
-                                            data, UCS_MEMORY_TYPE_HOST, length);
+        ucx_perf_test_memcpy(&self->m_perf, self->m_perf.send_buffer,
+                             self->m_perf.uct.send_mem.mem_type,
+                             /* we always assume that buffers
+                              * provided by TLs are host memory */
+                             data, UCS_MEMORY_TYPE_HOST, length);
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE
@@ -615,18 +615,18 @@ public:
         }
     }
 
- static ucs_status_t perf_memset(void *buffer, uint8_t value, size_t length,
+    static ucs_status_t perf_buffer_init(void *buffer, size_t length,
                                     ucs_memory_type memory_type, uct_ep_h ep,
                                     uct_rkey_t rkey)
     {
-        const std::vector<uint8_t> values(length, value);
-        if(memory_type == UCS_MEMORY_TYPE_HOST)
-        {
-            memset(buffer, value, length);
+        const std::vector<uint8_t> values(length, 0);
+        if (memory_type == UCS_MEMORY_TYPE_HOST || memory_type == UCS_MEMORY_TYPE_RDMA) {
+            memset(buffer, 0, length);
             return UCS_OK;
         }
 
-        return uct_ep_put_short(ep, values.data(), length, (uint64_t)buffer, rkey);
+        return uct_ep_put_short(ep, values.data(), length, (uint64_t)buffer,
+                                rkey);
     }
 
     ucs_status_t run_stream_req_uni(bool flow_control, bool send_window,
@@ -651,9 +651,9 @@ public:
         peer_index = rte_peer_index(group_size, my_index);
         ep         = m_perf.uct.peers[peer_index].ep;
         rkey       = m_perf.uct.peers[peer_index].rkey.rkey;
-        perf_memset(m_perf.send_buffer, 0, length, m_perf.uct.send_mem.mem_type,
+        perf_buffer_init(m_perf.send_buffer, length, m_perf.uct.send_mem.mem_type,
                     ep, rkey);
-        perf_memset(m_perf.recv_buffer, 0, length, m_perf.uct.recv_mem.mem_type,
+        perf_buffer_init(m_perf.recv_buffer,length, m_perf.uct.recv_mem.mem_type,
                     ep, rkey);
 
         uct_perf_test_prepare_iov_buffer();
@@ -681,10 +681,12 @@ public:
              * of send side progress and stores the recv sn to m_last_recvd_sn.
              */
             send_stream_req_uni(flow_control, send_window,
-                                direction_to_responder, recv_sn, recv_mem_type, length, peer_index);
+                                direction_to_responder, recv_sn, recv_mem_type,
+                                length, peer_index);
         } else if (my_index == 0) {
             recv_stream_req_uni(flow_control, send_window,
-                                direction_to_responder, recv_sn, recv_mem_type, length, peer_index);
+                                direction_to_responder, recv_sn, recv_mem_type,
+                                length, peer_index);
         }
 
         flush(peer_index);

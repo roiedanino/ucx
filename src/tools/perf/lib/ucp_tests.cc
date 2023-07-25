@@ -375,8 +375,7 @@ public:
         if (mem_type == UCS_MEMORY_TYPE_HOST) {
             return *(const volatile psn_t*)ptr;
         } else {
-            ucx_perf_test_memcpy(&m_perf, &sn, UCS_MEMORY_TYPE_HOST, ptr,
-                                 mem_type, sizeof(sn));
+            m_perf.memcpy(&sn, ptr, sizeof(sn));
             return sn;
         }
     }
@@ -389,8 +388,7 @@ public:
         if (mem_type == UCS_MEMORY_TYPE_HOST) {
             *(volatile psn_t*)ptr = sn;
         } else {
-            ucx_perf_test_memcpy(&m_perf, ptr, mem_type, &sn,
-                                 UCS_MEMORY_TYPE_HOST, sizeof(sn));
+            m_perf.memcpy(ptr, &sn, sizeof(sn));
         }
     }
 

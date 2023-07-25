@@ -1733,6 +1733,7 @@ ucs_status_t ucx_perf_run(const ucx_perf_params_t *params,
     perf->params = *params;
     ucx_perf_test_prepare_new_run(perf, params);
 
+    perf->memcpy = ucx_get_perf_memcpy(perf);
     status = ucx_perf_funcs[params->api].setup(perf);
     if (status != UCS_OK) {
         goto out_free;

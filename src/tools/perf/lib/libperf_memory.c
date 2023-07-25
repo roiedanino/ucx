@@ -170,49 +170,6 @@ void ucp_perf_test_free_mem(ucx_perf_context_t *perf)
     ucp_perf_mem_free(perf, perf->ucp.send_memh);
 }
 
-
-void ucx_perf_test_memcpy(ucx_perf_context_t *perf, void *dst,
-                          ucs_memory_type_t dst_mem_type, const void *src,
-                          ucs_memory_type_t src_mem_type, size_t length)
-{
-    // unsigned group_size             = rte_call(perf, group_size);
-    // unsigned group_index            = rte_call(perf, group_index);
-    // unsigned peer_index             = rte_peer_index(group_size, group_index);
-    // uct_rkey_t rkey                 = perf->uct.peers[peer_index].rkey.rkey;
-    // uct_ep_h ep                     = perf->uct.peers[peer_index].ep;
-    // ucs_status_t status = UCS_OK;
-
-    memcpy(dst, src, length);
-
-    // if (((dst_mem_type == UCS_MEMORY_TYPE_HOST) &&
-    //      (src_mem_type == UCS_MEMORY_TYPE_HOST)) ||
-    //     (dst_mem_type == UCS_MEMORY_TYPE_RDMA ||
-    //      src_mem_type == UCS_MEMORY_TYPE_RDMA)) {
-    //     memcpy(dst, src, length);
-    // } else if (dst_mem_type != UCS_MEMORY_TYPE_HOST) {
-    //     status = uct_ep_put_short(ep, src, length, (uint64_t)dst, rkey);
-    // } else {
-    //     status = uct_ep_get_short(ep, dst, length, (uint64_t)src, rkey);
-    // }
-    // if (status != UCS_OK) {
-    //     ucs_error("Failed at memcpy, status: %d", status);
-    // }
-}
-
-void ucx_perf_test_memcpy_host(void *dst, ucs_memory_type_t dst_mem_type,
-                               const void *src, ucs_memory_type_t src_mem_type,
-                               size_t count)
-{
-    if ((dst_mem_type != UCS_MEMORY_TYPE_HOST) ||
-        (src_mem_type != UCS_MEMORY_TYPE_HOST)) {
-        ucs_error("wrong memory type passed src - %s, dst - %s",
-                  ucs_memory_type_names[src_mem_type],
-                  ucs_memory_type_names[dst_mem_type]);
-    } else {
-        memcpy(dst, src, count);
-    }
-}
-
 ucs_status_t uct_perf_test_alloc_mem_by_mem_type(ucx_perf_context_t *perf,
                                                  const char *name, size_t size,
                                                  unsigned flags,

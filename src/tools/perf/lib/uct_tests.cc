@@ -138,8 +138,7 @@ public:
             *reinterpret_cast<psn_t*>(dst_sn) = *reinterpret_cast<const psn_t*>(src_sn);
         }
 
-        ucx_perf_test_memcpy(&m_perf, dst_sn, dst_mem_type, src_sn,
-                             UCS_MEMORY_TYPE_HOST, sizeof(psn_t));
+        m_perf.memcpy(dst_sn, src_sn, sizeof(psn_t));
     }
 
     inline psn_t
@@ -150,9 +149,7 @@ public:
         }
 
         psn_t host_sn;
-        ucx_perf_test_memcpy(&m_perf, &host_sn, UCS_MEMORY_TYPE_HOST,
-                             const_cast<const void*>(sn), mem_type,
-                             sizeof(psn_t));
+        m_perf.memcpy(&host_sn, const_cast<const void*>(sn), sizeof(psn_t));
         return host_sn;
     }
 
@@ -209,25 +206,14 @@ public:
     {
         uct_perf_test_runner *self = (uct_perf_test_runner *)arg;
         size_t length = ucx_perf_get_message_size(&self->m_perf.params);
-
-        ucx_perf_test_memcpy(/* we always assume that buffers
-                              * provided by TLs are host memory */
-                             &self->m_perf, dest, UCS_MEMORY_TYPE_HOST,
-                             self->m_perf.send_buffer,
-                             self->m_perf.uct.send_mem.mem_type, length);
-
+        self->m_perf.memcpy(dest, self->m_perf.send_buffer, length);
         return length;
     }
 
     static void unpack_cb(void *arg, const void *data, size_t length)
     {
         uct_perf_test_runner *self = (uct_perf_test_runner *)arg;
-
-        ucx_perf_test_memcpy(&self->m_perf, self->m_perf.send_buffer,
-                             self->m_perf.uct.send_mem.mem_type,
-                             /* we always assume that buffers
-                              * provided by TLs are host memory */
-                             data, UCS_MEMORY_TYPE_HOST, length);
+        self->m_perf.memcpy(self->m_perf.send_buffer, data, length);
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE

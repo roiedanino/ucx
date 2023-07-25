@@ -16,8 +16,9 @@ BEGIN_C_DECLS
 /** @file libperf_int.h */
 
 #include <ucs/async/async.h>
-#include <ucs/time/time.h>
+#include <ucs/memory/memory_type.h>
 #include <ucs/sys/math.h>
+#include <ucs/time/time.h>
 
 
 #if _OPENMP
@@ -41,6 +42,9 @@ typedef struct ucx_perf_context        ucx_perf_context_t;
 typedef struct uct_peer                uct_peer_t;
 typedef struct ucp_perf_request        ucp_perf_request_t;
 typedef struct ucx_perf_thread_context ucx_perf_thread_context_t;
+
+typedef void *(*memcpy_func_t)(void *restrict dest, const void *restrict src,
+                               size_t size);
 
 
 struct ucx_perf_context {
@@ -98,6 +102,8 @@ struct ucx_perf_context {
             void                       *am_hdr;
         } ucp;
     };
+
+    memcpy_func_t memcpy;
 };
 
 struct ucx_perf_thread_context {
@@ -156,10 +162,7 @@ size_t ucx_perf_get_message_size(const ucx_perf_params_t *params);
 
 void ucx_perf_report(ucx_perf_context_t *perf);
 
-void ucx_perf_test_memcpy(ucx_perf_context_t *perf, void *dst,
-                          ucs_memory_type_t dst_mem_type, const void *src,
-                          ucs_memory_type_t src_mem_type, size_t length);
-
+memcpy_func_t ucx_get_perf_memcpy(ucx_perf_context_t *perf);
 
 static UCS_F_ALWAYS_INLINE int ucx_perf_context_done(ucx_perf_context_t *perf)
 {

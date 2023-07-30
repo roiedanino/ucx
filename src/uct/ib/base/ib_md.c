@@ -479,16 +479,20 @@ ucs_status_t uct_ib_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
     struct ibv_mr *mr;
 #if HAVE_IBV_DM
     if (params->dm != NULL) {
-        access = UCT_IB_MEM_ACCESS_FLAGS | IBV_ACCESS_ON_DEMAND;
-    }
+        access = UCT_IB_MEM_ACCESS_FLAGS | IBV_ACCESS_ZERO_BASED;
+        title  = "ibv_reg_dm_mr";
+        mr = UCS_PROFILE_CALL_ALWAYS(ibv_reg_dm_mr, pd, params->dm, 0, length,
+                                     access);
+            
+        if (mr != NULL) {
+            mr->addr   = addr;
+            mr->length = length;
+        }
+    } else
 #endif
     if (params->dmabuf_fd == UCT_DMABUF_FD_INVALID) {
         title = "ibv_reg_mr";
         mr    = UCS_PROFILE_CALL_ALWAYS(ibv_reg_mr, pd, addr, length, access);
-
-        if (mr != NULL) {
-            mr->addr = addr;
-        }
     } else {
 #if HAVE_DECL_IBV_REG_DMABUF_MR
         title = "ibv_reg_dmabuf_mr";
@@ -735,7 +739,6 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
     struct ibv_alloc_dm_attr dm_attr;
     uct_ib_mem_get_addr_params_t get_addr_params;
     ucs_status_t status;
-    void *device_addr;
 
     /* Align the allocation to a potential use of registration cache */
     params->length = ucs_align_up_pow2(params->length, md->alloc_align);
@@ -768,10 +771,7 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
 
     get_addr_params.length = params->length;
     get_addr_params.dm     = params->memh->dm;
-    device_addr     = uct_ib_md_ops(md)->get_dev_addr(md, &get_addr_params);
-    params->address = mmap(device_addr, params->length, PROT_READ | PROT_WRITE,
-                           MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-
+    params->address = uct_ib_md_ops(md)->get_dev_addr(md, &get_addr_params);
     ucs_debug("allocated device memory %p..%p on %s", params->address,
               UCS_PTR_BYTE_OFFSET(params->address, params->length),
               uct_ib_device_name(&md->dev));
@@ -795,7 +795,6 @@ ucs_status_t uct_ib_md_release_device_mem(uct_md_h uct_md, uct_ib_mem_t *memh)
     ucs_status_t status = uct_ib_memh_dereg(md, memh);
     int ret;
 
-    munmap(memh->mmapped_addr, memh->length);
     ret = UCS_PROFILE_CALL(ibv_free_dm, memh->dm);
     if (ret) {
         ucs_warn("ibv_free_dm() failed: %m");

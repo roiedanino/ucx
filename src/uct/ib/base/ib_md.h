@@ -118,7 +118,6 @@ typedef struct uct_ib_mem {
 
 #if HAVE_IBV_DM
     struct ibv_dm *dm;
-    void          *mmapped_addr;
     size_t        length;
 #endif
 

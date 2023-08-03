@@ -117,6 +117,7 @@ memcpy_func_t ucx_get_perf_memcpy(ucx_perf_context_t *perf)
     }
 
     switch (mem_type) {
+    case UCS_MEMORY_TYPE_RDMA:
     case UCS_MEMORY_TYPE_HOST:
         return memcpy;
 #if HAVE_CUDA

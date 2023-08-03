@@ -934,8 +934,10 @@ static uct_ib_md_ops_t uct_ib_mlx5_devx_md_ops;
 static void uct_ib_mlx5_devx_init_flush_mr(uct_ib_mlx5_md_t *md)
 {
     uct_ib_mem_reg_internal_params_t params = {
-        .flags     = UCT_IB_MEM_ACCESS_FLAGS,
-        .dmabuf_fd = UCT_DMABUF_FD_INVALID
+        .flags         = UCT_IB_MEM_ACCESS_FLAGS,
+        .dmabuf_fd     = UCT_DMABUF_FD_INVALID,
+        .dmabuf_offset = 0,
+        .dm            = NULL
     };
     ucs_status_t status;
 
@@ -947,7 +949,8 @@ static void uct_ib_mlx5_devx_init_flush_mr(uct_ib_mlx5_md_t *md)
     ucs_assert(UCT_IB_MD_FLUSH_REMOTE_LENGTH <= ucs_get_page_size());
 
     status = uct_ib_reg_mr(md->super.pd, md->zero_buf,
-                           UCT_IB_MD_FLUSH_REMOTE_LENGTH, 0, &params,
+                           UCT_IB_MD_FLUSH_REMOTE_LENGTH, UCT_IB_MEM_ACCESS_FLAGS, 
+                           &params,
                            &md->flush_mr, 1);
     if (status != UCS_OK) {
         goto err;

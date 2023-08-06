@@ -388,6 +388,7 @@ uct_rc_mlx5_ep_atomic_post(uct_ep_h tl_ep, unsigned opcode,
                            uint64_t swap_mask, uint64_t swap_add)
 {
     UCT_RC_MLX5_EP_DECL(tl_ep, iface, ep);
+
     uint32_t ib_rkey = uct_ib_resolve_atomic_rkey(rkey, ep->super.atomic_mr_offset,
                                                   &remote_addr);
 

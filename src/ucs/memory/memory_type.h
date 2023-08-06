@@ -18,7 +18,8 @@ BEGIN_C_DECLS
  */
 #define UCS_MEMORY_TYPES_CPU_ACCESSIBLE \
     (UCS_BIT(UCS_MEMORY_TYPE_HOST) | \
-     UCS_BIT(UCS_MEMORY_TYPE_ROCM_MANAGED))
+     UCS_BIT(UCS_MEMORY_TYPE_ROCM_MANAGED) | \
+     UCS_BIT(UCS_MEMORY_TYPE_RDMA))
 
 
 /**
@@ -40,7 +41,7 @@ typedef enum ucs_memory_type {
     UCS_MEMORY_TYPE_CUDA_MANAGED,  /**< NVIDIA CUDA managed (or unified) memory */
     UCS_MEMORY_TYPE_ROCM,          /**< AMD ROCM memory */
     UCS_MEMORY_TYPE_ROCM_MANAGED,  /**< AMD ROCM managed system memory */
-    UCS_MEMORY_TYPE_RDMA,          /**< Infiniband device memory */
+    UCS_MEMORY_TYPE_RDMA,          /**< RDMA device memory */
     UCS_MEMORY_TYPE_LAST,
     UCS_MEMORY_TYPE_UNKNOWN = UCS_MEMORY_TYPE_LAST
 } ucs_memory_type_t;

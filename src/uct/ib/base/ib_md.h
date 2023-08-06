@@ -12,6 +12,7 @@
 #include "ib_device.h"
 
 #include <uct/base/uct_md.h>
+#include <ucs/memory/memtype_cache.h>
 #include <ucs/stats/stats.h>
 
 #include <infiniband/verbs.h>
@@ -485,12 +486,19 @@ static inline uint32_t uct_ib_resolve_atomic_rkey(uct_rkey_t uct_rkey,
                                                   uint64_t *remote_addr_p)
 {
     uint32_t atomic_rkey = uct_ib_md_indirect_rkey(uct_rkey);
+    ucs_memory_info_t mem_info;
+    ucs_status_t status;
+
+    status = ucs_memtype_cache_lookup((void*)*remote_addr_p, 8, &mem_info);
+    *remote_addr_p = ((status == UCS_OK) &&
+                      (mem_info.type == UCS_MEMORY_TYPE_RDMA)) ?
+                             0 :
+                             *remote_addr_p + atomic_mr_offset;
     if (atomic_rkey == UCT_IB_INVALID_MKEY) {
         return uct_ib_md_direct_rkey(uct_rkey);
-    } else {
-        *remote_addr_p += atomic_mr_offset;
-        return atomic_rkey;
-    }
+    } 
+
+    return atomic_rkey;
 }
 
 

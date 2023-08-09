@@ -788,10 +788,10 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
         return UCS_ERR_NO_MEMORY;
     }
     /* Save address in memtype cache */
-    status = ucs_memtype_cache_lookup(params->address, params->length, &mem_info);
-    if(status == UCS_ERR_NO_ELEM) {
-        ucs_memtype_cache_update(params->address, params->length, UCS_MEMORY_TYPE_RDMA, UCS_SYS_DEVICE_ID_UNKNOWN);
-    }
+    // status = ucs_memtype_cache_lookup(params->address, params->length, &mem_info);
+    // if(status == UCS_ERR_NO_ELEM) {
+    //     ucs_memtype_cache_update(params->address, params->length, UCS_MEMORY_TYPE_RDMA, UCS_SYS_DEVICE_ID_UNKNOWN);
+    // }
 
     return UCS_OK;
 }

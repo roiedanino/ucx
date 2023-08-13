@@ -224,9 +224,9 @@ public:
         size_t header_size;
         ssize_t packed_len;
 
-        if (m_perf.params.recv_mem_type == UCS_MEMORY_TYPE_RDMA) {
-            remote_addr = 0;
-        }
+        // if (m_perf.params.recv_mem_type == UCS_MEMORY_TYPE_RDMA) {
+        //     remote_addr = 0;
+        // }
 
         /* coverity[switch_selector_expr_is_constant] */
         switch (CMD) {

@@ -239,7 +239,7 @@ static void enable_device_memory_if_available(const uct_ib_md_t *md,
 {
 #if HAVE_IBV_DM
     md_attr->alloc_mem_types  |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
-    // md_attr->access_mem_types |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
+    md_attr->access_mem_types |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
     md_attr->max_alloc         = md->dev.dev_attr.max_dm_size;
 #endif
     return;
@@ -738,7 +738,7 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
 
     struct ibv_alloc_dm_attr dm_attr;
     uct_ib_mem_get_addr_params_t get_addr_params;
-    ucs_memory_info_t mem_info;
+    // ucs_memory_info_t mem_info;
     ucs_status_t status;
 
     /* Align the allocation to a potential use of registration cache */

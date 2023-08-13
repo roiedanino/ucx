@@ -183,8 +183,8 @@ uct_ib_mlx5_devx_reg_memic(uct_ib_mlx5_md_t *md, int atomic, intptr_t addr,
     UCT_IB_MLX5DV_SET(create_mkey_in, in, opcode, UCT_IB_MLX5_CMD_OP_CREATE_MKEY);
     mkc = UCT_IB_MLX5DV_ADDR_OF(create_mkey_in, in, memory_key_mkey_entry);
     // UCT_IB_MLX5DV_SET(mkc, mkc, free, 0); 
-    UCT_IB_MLX5DV_SET(mkc, mkc, access_mode_1_0, UCT_IB_MLX5_MKC_ACCESS_MODE_MEMIC & 0x3);
-    UCT_IB_MLX5DV_SET(mkc, mkc, access_mode_4_2, (UCT_IB_MLX5_MKC_ACCESS_MODE_MEMIC >> 2) & 0x7);
+    UCT_IB_MLX5DV_SET(mkc, mkc, access_mode_1_0, UCT_IB_MLX5_MKC_ACCESS_MODE_KSM);
+    // UCT_IB_MLX5DV_SET(mkc, mkc, access_mode_4_2, (UCT_IB_MLX5_MKC_ACCESS_MODE_MEMIC >> 2) & 0x7);
     UCT_IB_MLX5DV_SET(mkc, mkc, a, !!atomic);
     UCT_IB_MLX5DV_SET(mkc, mkc, rw, 1);
     UCT_IB_MLX5DV_SET(mkc, mkc, rr, 1);
@@ -332,14 +332,25 @@ uct_ib_mlx5_devx_reg_ksm_data_contig_v2(uct_ib_mlx5_md_t *md,
                                      int atomic, struct mlx5dv_devx_obj **mr_p,
                                      uint32_t *mkey, uint8_t is_memic)
 {
-    intptr_t addr = (intptr_t)mr->super.ib->addr & ~(UCT_IB_MD_MAX_MR_SIZE - 1);
+    intptr_t addr = is_memic ? (intptr_t)mr->super.ib->addr :
+                               (intptr_t)mr->super.ib->addr &
+                                       ~(UCT_IB_MD_MAX_MR_SIZE - 1);
     /* FW requires indirect atomic MR addr and length to be aligned
      * to max supported atomic argument size */
-    size_t length = ucs_align_up(mr->super.ib->length +
-                                         (intptr_t)mr->super.ib->addr - addr,
-                                 md->super.dev.atomic_align);
+    size_t length = is_memic ?
+                            mr->super.ib->length :
+                            ucs_align_up(mr->super.ib->length +
+                                                 (intptr_t)mr->super.ib->addr -
+                                                 addr,
+                                         md->super.dev.atomic_align);
     /* add off to workaround CREATE_MKEY range check issue */
-    int list_size = ucs_div_round_up(length + off, UCT_IB_MD_MAX_MR_SIZE);
+    int list_size;
+
+    // if(is_memic) {
+    //     off = 0;
+    // }
+
+    list_size = ucs_div_round_up(length + off, UCT_IB_MD_MAX_MR_SIZE);
 
     return uct_ib_mlx5_devx_reg_ksm_data_addr_v2(md, mr->super.ib, addr, length,
                                                  addr + off, atomic, list_size,

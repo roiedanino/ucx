@@ -610,8 +610,7 @@ static ucs_status_t uct_ib_mlx5_devx_reg_atomic_key(uct_ib_md_t *ibmd,
     uint8_t mr_id;
     int is_atomic;
 
-    if (!uct_ib_mlx5_devx_use_atomic_ksm(md, memh) //|| ib_memh->dm != NULL
-    ) {
+    if (!uct_ib_mlx5_devx_use_atomic_ksm(md, memh)) {
         /* We cannot return a direct key, since the requestor may try to use it
            with non-zero atomic offset */
         return UCS_ERR_UNSUPPORTED;

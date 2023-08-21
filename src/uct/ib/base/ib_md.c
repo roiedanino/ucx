@@ -239,8 +239,12 @@ static void enable_device_memory_if_available(const uct_ib_md_t *md,
 {
 #if HAVE_IBV_DM
     md_attr->alloc_mem_types  |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
+    // md_attr->reg_mem_types    |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
     // md_attr->access_mem_types |= UCS_BIT(UCS_MEMORY_TYPE_RDMA);
-    md_attr->max_alloc         = md->dev.dev_attr.max_dm_size;
+    ucs_info("access mem types: %lu, alloc_mem_types: %lu, reg_mem_types: %lu",
+             md_attr->access_mem_types, md_attr->alloc_mem_types,
+             md_attr->reg_mem_types);
+    // md_attr->max_alloc         = md->dev.dev_attr.max_dm_size;
 #endif
     return;
 }
@@ -773,7 +777,7 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
     get_addr_params.length = params->length;
     get_addr_params.dm     = params->memh->dm;
     params->address = uct_ib_md_ops(md)->get_dev_addr(md, &get_addr_params);
-    ucs_debug("allocated device memory %p..%p on %s", params->address,
+    ucs_info("allocated device memory %p..%p on %s", params->address,
               UCS_PTR_BYTE_OFFSET(params->address, params->length),
               uct_ib_device_name(&md->dev));
 
@@ -787,11 +791,6 @@ ucs_status_t uct_ib_md_alloc_device_mem(uct_md_h uct_md,
         uct_ib_md_release_device_mem(uct_md, params->memh);
         return UCS_ERR_NO_MEMORY;
     }
-    /* Save address in memtype cache */
-    // status = ucs_memtype_cache_lookup(params->address, params->length, &mem_info);
-    // if(status == UCS_ERR_NO_ELEM) {
-    //     ucs_memtype_cache_update(params->address, params->length, UCS_MEMORY_TYPE_RDMA, UCS_SYS_DEVICE_ID_UNKNOWN);
-    // }
 
     return UCS_OK;
 }

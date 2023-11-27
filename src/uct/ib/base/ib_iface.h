@@ -192,6 +192,9 @@ struct uct_ib_iface_config {
 
     /* IB reverse SL (default: AUTO - same value as sl) */
     unsigned long           reverse_sl;
+
+    /* High priority SL */
+    unsigned long           priority_sl;
 };
 
 

@@ -1037,6 +1037,31 @@ static int ucp_wireup_should_activate_wiface(ucp_worker_iface_t *wiface,
 }
 
 static ucs_status_t
+ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
+                              uct_ep_params_t *uct_ep_params)
+{
+    uct_ep_h uct_ep;
+    ucs_status_t status;
+
+    uct_ep_params->field_mask |= UCT_EP_PARAM_FIELD_PRIORITY;
+    status                     = uct_ep_create(uct_ep_params, &uct_ep);
+
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    ucp_ep_set_priority_lane(ep, lane, uct_ep);
+
+    return UCS_OK;
+}
+
+static int
+ucp_wireup_should_create_priority_ep(const ucp_worker_iface_t *wiface)
+{
+    return wiface->attr.cap.flags & UCT_IFACE_FLAG_MESSAGE_PRIORITY;
+}
+
+static ucs_status_t
 ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
                                  unsigned path_index,
                                  ucp_worker_iface_t *wiface,
@@ -1103,6 +1128,11 @@ ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
         ucs_assert(ucp_proxy_ep_extract(ucp_ep_get_lane(ep, lane)) == NULL);
         ucs_assert(ucp_ep_has_cm_lane(ep));
         ucp_wireup_ep_lane_set_next_ep(ep, lane, uct_ep);
+    }
+
+    if (ucp_wireup_should_create_priority_ep(wiface)) {
+        ucp_wireup_create_priority_ep(ep, lane, &uct_ep_params);
+        ucs_warn("created priority_ep");
     }
 
     if (ucp_wireup_should_activate_wiface(wiface, ep, lane)) {

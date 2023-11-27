@@ -533,6 +533,7 @@ typedef struct ucp_ep_ext {
      * structure. TODO allocate this array dynamically.
      */
     uct_ep_h                     *uct_eps;
+    uct_ep_h                     *uct_priority_eps;
 } ucp_ep_ext_t;
 
 

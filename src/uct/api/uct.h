@@ -1424,6 +1424,8 @@ struct uct_ep_params {
      * @ref UCT_IFACE_FLAG_CONNECT_TO_SOCKADDR capability.
      */
     const ucs_sock_addr_t             *local_sockaddr;
+
+    uint32_t                                 priority;
 };
 
 

@@ -42,6 +42,18 @@ ucp_ep_get_lane(ucp_ep_h ep, ucp_lane_index_t lane_index)
     }
 }
 
+static UCS_F_ALWAYS_INLINE uct_ep_h
+ucp_ep_get_priority_lane(ucp_ep_h ep, ucp_lane_index_t lane_index,
+                         const ucp_request_param_t *request)
+{
+    if ((request != NULL) && (request->priority == UCP_PRIORITY_HIGH) &&
+        (ep->ext->uct_priority_eps != NULL) &&
+        (ep->ext->uct_priority_eps[lane_index] != NULL)) {
+        return ep->ext->uct_priority_eps[lane_index];
+    }
+    return ucp_ep_get_lane(ep, lane_index);
+}
+
 static UCS_F_ALWAYS_INLINE void ucp_ep_set_lane(ucp_ep_h ep, size_t lane_index,
                                                 uct_ep_h uct_ep)
 {
@@ -52,6 +64,12 @@ static UCS_F_ALWAYS_INLINE void ucp_ep_set_lane(ucp_ep_h ep, size_t lane_index,
     } else {
         ep->ext->uct_eps[lane_index - UCP_MAX_FAST_PATH_LANES] = uct_ep;
     }
+}
+
+static UCS_F_ALWAYS_INLINE void
+ucp_ep_set_priority_lane(ucp_ep_h ep, size_t lane_index, uct_ep_h uct_ep)
+{
+    ep->ext->uct_priority_eps[lane_index] = uct_ep;
 }
 
 static inline ucp_lane_index_t ucp_ep_get_am_lane(ucp_ep_h ep)

@@ -299,6 +299,7 @@ struct uct_ib_iface {
         uint8_t               port_num;
         uint8_t               sl;
         uint8_t               reverse_sl;
+        uint8_t               sl_by_priority[UCS_PRIORITY_LAST];
         uint8_t               traffic_class;
         uint8_t               hop_limit;
         uint8_t               qp_type;
@@ -554,11 +555,13 @@ void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
                                             const union ibv_gid *gid,
                                             uint8_t gid_index,
                                             unsigned path_index,
+                                            ucs_priority_t priority,
                                             struct ibv_ah_attr *ah_attr);
 
 void uct_ib_iface_fill_ah_attr_from_addr(uct_ib_iface_t *iface,
                                          const uct_ib_address_t *ib_addr,
                                          unsigned path_index,
+                                         ucs_priority_t priority,
                                          struct ibv_ah_attr *ah_attr,
                                          enum ibv_mtu *path_mtu);
 
@@ -587,6 +590,13 @@ uint8_t uct_ib_iface_config_select_sl(const uct_ib_iface_config_t *ib_config);
 
 uint8_t
 uct_ib_iface_config_select_reverse_sl(const uct_ib_iface_config_t *ib_config);
+
+uint8_t
+uct_ib_iface_config_select_priority_sl(const uct_ib_iface_config_t *ib_config);
+
+void uct_ib_iface_config_set_priority_sls(uct_ib_iface_t *iface,
+                                          uint8_t default_sl,
+                                          uint8_t high_priority_sl);
 
 #define UCT_IB_IFACE_FMT \
     "%s:%d/%s"

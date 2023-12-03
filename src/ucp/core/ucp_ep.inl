@@ -46,7 +46,7 @@ static UCS_F_ALWAYS_INLINE uct_ep_h
 ucp_ep_get_priority_lane(ucp_ep_h ep, ucp_lane_index_t lane_index,
                          const ucp_request_param_t *request)
 {
-    if ((request != NULL) && (request->priority == UCP_PRIORITY_HIGH) &&
+    if ((request != NULL) && (request->priority == UCS_PRIORITY_HIGH) &&
         (ep->ext->uct_priority_eps != NULL) &&
         (ep->ext->uct_priority_eps[lane_index] != NULL)) {
         return ep->ext->uct_priority_eps[lane_index];

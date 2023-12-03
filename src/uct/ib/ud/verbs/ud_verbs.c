@@ -555,7 +555,7 @@ uct_ud_verbs_iface_unpack_peer_address(uct_ud_iface_t *iface,
 
     memset(peer_address, 0, sizeof(*peer_address));
 
-    uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr, path_index,
+    uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr, path_index, UCS_PRIORITY_DEFAULT,
                                         &ah_attr, &path_mtu);
     status = uct_ib_iface_create_ah(ib_iface, &ah_attr, "UD verbs connect",
                                     &peer_address->ah);
@@ -591,7 +591,7 @@ int uct_ud_verbs_ep_is_connected(const uct_ep_h tl_ep,
     }
 
     ib_addr = (uct_ib_address_t*)params->device_addr;
-    uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr, ep->super.path_index,
+    uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr, ep->super.path_index, UCS_PRIORITY_DEFAULT,
                                         &ah_attr, &path_mtu);
 
     status = uct_ib_device_get_ah_cached(uct_ib_iface_device(ib_iface),
@@ -760,6 +760,10 @@ static UCS_CLASS_INIT_FUNC(uct_ud_verbs_iface_t, uct_md_h md, uct_worker_h worke
     self->super.super.config.sl = uct_ib_iface_config_select_sl(&config->super);
     self->super.super.config.reverse_sl = uct_ib_iface_config_select_reverse_sl(
             &config->super);
+    uct_ib_iface_config_set_priority_sls(&self->super.super,
+                                         self->super.super.config.sl,
+                                         uct_ib_iface_config_select_priority_sl(
+                                                 &config->super));
 
     memset(&self->tx.wr_inl, 0, sizeof(self->tx.wr_inl));
     self->tx.wr_inl.opcode            = IBV_WR_SEND;

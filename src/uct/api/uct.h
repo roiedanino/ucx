@@ -14,6 +14,7 @@
 #include <uct/api/tl.h>
 #include <uct/api/version.h>
 #include <ucs/async/async_fwd.h>
+#include <ucs/config/types.h>
 #include <ucs/datastruct/callbackq.h>
 #include <ucs/datastruct/callbackq_compat.h>
 #include <ucs/datastruct/linear_func.h>
@@ -1429,7 +1430,16 @@ struct uct_ep_params {
      */
     const ucs_sock_addr_t             *local_sockaddr;
 
-    uint32_t                                 priority;
+    /**
+     * On supported transports, an additional uct_ep is created
+     * for higher priority messages, which can be handled differently in
+     * the underlying transport.
+     *
+     * @note The interface in this routine requires the
+     * @ref UCT_IFACE_FLAG_MESSAGE_PRIORITY capability.
+     *
+     */
+    ucs_priority_t                    priority;
 };
 
 

@@ -300,6 +300,11 @@ static UCS_CLASS_INIT_FUNC(uct_rc_verbs_iface_t, uct_md_h tl_md,
     self->super.super.config.sl          = uct_ib_iface_config_select_sl(ib_config);
     self->super.super.config.reverse_sl = uct_ib_iface_config_select_reverse_sl(
             ib_config);
+    ucs_warn("priority SL is : %lu", ib_config->priority_sl);
+    uct_ib_iface_config_set_priority_sls(&self->super.super,
+                                         self->super.super.config.sl,
+                                         ib_config->priority_sl);
+
 
     if ((config->super.super.fence_mode == UCT_RC_FENCE_MODE_WEAK) ||
         (config->super.super.fence_mode == UCT_RC_FENCE_MODE_AUTO)) {

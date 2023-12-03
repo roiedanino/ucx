@@ -36,7 +36,8 @@ ucs_status_t
 uct_ud_mlx5_iface_get_av(uct_ib_iface_t *iface,
                          uct_ud_mlx5_iface_common_t *ud_common_iface,
                          const uct_ib_address_t *ib_addr, unsigned path_index,
-                         const char *usage, uct_ib_mlx5_base_av_t *base_av,
+                         ucs_priority_t priority, const char *usage,
+                         uct_ib_mlx5_base_av_t *base_av,
                          struct mlx5_grh_av *grh_av, int *is_global)
 {
     ucs_status_t        status;
@@ -45,7 +46,8 @@ uct_ud_mlx5_iface_get_av(uct_ib_iface_t *iface,
     struct ibv_ah_attr  ah_attr;
     enum ibv_mtu        path_mtu;
 
-    uct_ib_iface_fill_ah_attr_from_addr(iface, ib_addr, path_index, &ah_attr,
+    uct_ib_iface_fill_ah_attr_from_addr(iface, ib_addr, path_index,
+                                        UCS_PRIORITY_DEFAULT, &ah_attr,
                                         &path_mtu);
     status = uct_ib_iface_create_ah(iface, &ah_attr, usage, &ah);
     if (status != UCS_OK) {

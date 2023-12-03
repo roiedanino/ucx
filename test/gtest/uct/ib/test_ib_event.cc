@@ -37,9 +37,10 @@ public:
             uct_ib_iface_t *iface = ucs_derived_of(m_e.iface(), uct_ib_iface_t);
             struct ibv_ah_attr result = {};
 
-            uct_ib_iface_fill_ah_attr_from_gid_lid(iface,
-                    uct_ib_iface_port_attr(iface)->lid, &iface->gid_info.gid,
-                    iface->gid_info.gid_index, 0, &result);
+            uct_ib_iface_fill_ah_attr_from_gid_lid(
+                    iface, uct_ib_iface_port_attr(iface)->lid,
+                    &iface->gid_info.gid, iface->gid_info.gid_index, 0,
+                    UCS_PRIORITY_DEFAULT, &result);
             return result;
         }
 

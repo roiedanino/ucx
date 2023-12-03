@@ -1094,7 +1094,8 @@ ucs_status_t uct_dc_mlx5_ep_fc_pure_grant_send(uct_dc_mlx5_ep_t *ep,
         uct_ib_iface_fill_ah_attr_from_gid_lid(
                 ib_iface, fc_req->lid,
                 ucs_unaligned_ptr(&fc_req->sender.payload.gid),
-                iface->super.super.super.gid_info.gid_index, 0, &ah_attr);
+                iface->super.super.super.gid_info.gid_index, 0,
+                ep->super.priority, &ah_attr);
 
         status = uct_ib_iface_create_ah(ib_iface, &ah_attr, "DC pure grant",
                                         &ah);
@@ -1244,7 +1245,8 @@ static void uct_dc_mlx5_ep_keepalive_cleanup(uct_dc_mlx5_ep_t *ep)
 
 UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
                     const uct_dc_mlx5_iface_addr_t *if_addr,
-                    uct_ib_mlx5_base_av_t *av, uint8_t path_index)
+                    uct_ib_mlx5_base_av_t *av, uint8_t path_index,
+                    ucs_priority_t priority)
 {
     const uct_dc_mlx5_iface_flush_addr_t *flush_addr =
             ucs_derived_of(if_addr, uct_dc_mlx5_iface_flush_addr_t);
@@ -1260,6 +1262,7 @@ UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
     self->av.dqp_dct      = av->dqp_dct | htonl(remote_dctn);
     self->av.rlid         = av->rlid;
     self->flags           = path_index % iface->tx.num_dci_pools;
+    self->super.priority  = priority;
 
     if (if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_FLUSH_RKEY) {
         self->flush_rkey_hi = flush_addr->flush_rkey_hi;
@@ -1317,21 +1320,22 @@ UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_ep_t)
 }
 
 UCS_CLASS_DEFINE(uct_dc_mlx5_ep_t, uct_base_ep_t);
-UCS_CLASS_DEFINE_NEW_FUNC(uct_dc_mlx5_ep_t, uct_ep_t, uct_dc_mlx5_iface_t *,
-                          const uct_dc_mlx5_iface_addr_t *,
-                          uct_ib_mlx5_base_av_t *, uint8_t);
+UCS_CLASS_DEFINE_NEW_FUNC(uct_dc_mlx5_ep_t, uct_ep_t, uct_dc_mlx5_iface_t*,
+                          const uct_dc_mlx5_iface_addr_t*,
+                          uct_ib_mlx5_base_av_t*, uint8_t, ucs_priority_t);
 UCS_CLASS_DEFINE_DELETE_FUNC(uct_dc_mlx5_ep_t, uct_ep_t);
 
 UCS_CLASS_INIT_FUNC(uct_dc_mlx5_grh_ep_t, uct_dc_mlx5_iface_t *iface,
                     const uct_dc_mlx5_iface_addr_t *if_addr,
                     uct_ib_mlx5_base_av_t *av, uint8_t path_index,
-                    struct mlx5_grh_av *grh_av)
+                    struct mlx5_grh_av *grh_av, ucs_priority_t priority)
 {
     ucs_trace_func("");
 
-    UCS_CLASS_CALL_SUPER_INIT(uct_dc_mlx5_ep_t, iface, if_addr, av, path_index);
+    UCS_CLASS_CALL_SUPER_INIT(uct_dc_mlx5_ep_t, iface, if_addr, av, path_index,
+                              priority);
 
-    self->super.flags |= UCT_DC_MLX5_EP_FLAG_GRH;
+    self->super.flags         |= UCT_DC_MLX5_EP_FLAG_GRH;
     memcpy(&self->grh_av, grh_av, sizeof(*grh_av));
     return UCS_OK;
 }
@@ -1342,10 +1346,10 @@ UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_grh_ep_t)
 }
 
 UCS_CLASS_DEFINE(uct_dc_mlx5_grh_ep_t, uct_dc_mlx5_ep_t);
-UCS_CLASS_DEFINE_NEW_FUNC(uct_dc_mlx5_grh_ep_t, uct_ep_t, uct_dc_mlx5_iface_t *,
-                          const uct_dc_mlx5_iface_addr_t *,
-                          uct_ib_mlx5_base_av_t *, uint8_t,
-                          struct mlx5_grh_av *);
+UCS_CLASS_DEFINE_NEW_FUNC(uct_dc_mlx5_grh_ep_t, uct_ep_t, uct_dc_mlx5_iface_t*,
+                          const uct_dc_mlx5_iface_addr_t*,
+                          uct_ib_mlx5_base_av_t*, uint8_t, struct mlx5_grh_av*,
+                          ucs_priority_t);
 
 /* TODO:
    currently pending code supports only dcs policy

@@ -774,6 +774,7 @@ void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
                                             const union ibv_gid *gid,
                                             uint8_t gid_index,
                                             unsigned path_index,
+                                            ucs_priority_t priority,
                                             struct ibv_ah_attr *ah_attr)
 {
     uint8_t path_bits;
@@ -783,7 +784,13 @@ void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
 
     ucs_assert(iface->config.sl < UCT_IB_SL_NUM);
 
-    ah_attr->sl                = iface->config.sl;
+    ucs_warn("Priority in ah_attr is: %d", (int)priority);
+    if (priority == UCS_PRIORITY_DEFAULT) {
+        ah_attr->sl = iface->config.sl;
+    }
+    else if (priority == UCS_PRIORITY_HIGH) {
+        ah_attr->sl = iface->config.sl_by_priority[UCS_PRIORITY_HIGH];
+    }
     ah_attr->port_num          = iface->config.port_num;
     ah_attr->grh.traffic_class = iface->config.traffic_class;
 
@@ -820,6 +827,7 @@ void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
 void uct_ib_iface_fill_ah_attr_from_addr(uct_ib_iface_t *iface,
                                          const uct_ib_address_t *ib_addr,
                                          unsigned path_index,
+                                         ucs_priority_t priority,
                                          struct ibv_ah_attr *ah_attr,
                                          enum ibv_mtu *path_mtu)
 {
@@ -853,7 +861,7 @@ void uct_ib_iface_fill_ah_attr_from_addr(uct_ib_iface_t *iface,
 
     uct_ib_iface_fill_ah_attr_from_gid_lid(iface, params.lid, gid,
                                            params.gid_index, path_index,
-                                           ah_attr);
+                                           priority, ah_attr);
 }
 
 static ucs_status_t uct_ib_iface_init_pkey(uct_ib_iface_t *iface,
@@ -1318,6 +1326,26 @@ uct_ib_iface_config_select_reverse_sl(const uct_ib_iface_config_t *ib_config)
     return (uint8_t)ib_config->reverse_sl;
 }
 
+uint8_t
+uct_ib_iface_config_select_priority_sl(const uct_ib_iface_config_t *ib_config)
+{
+    if (ib_config->priority_sl == UCS_ULUNITS_AUTO) {
+        return ib_config->sl;
+    }
+
+    ucs_assert(ib_config->priority_sl < UCT_IB_SL_NUM);
+    return (uint8_t)ib_config->priority_sl;
+}
+
+
+void uct_ib_iface_config_set_priority_sls(uct_ib_iface_t *iface,
+                                          uint8_t default_sl,
+                                          uint8_t high_priority_sl)
+{
+    iface->config.sl_by_priority[UCS_PRIORITY_DEFAULT] = default_sl;
+    iface->config.sl_by_priority[UCS_PRIORITY_HIGH]    = high_priority_sl;
+}
+
 UCS_CLASS_INIT_FUNC(uct_ib_iface_t, uct_iface_ops_t *tl_ops,
                     uct_ib_iface_ops_t *ops, uct_md_h md, uct_worker_h worker,
                     const uct_iface_params_t *params,
@@ -1379,8 +1407,10 @@ UCS_CLASS_INIT_FUNC(uct_ib_iface_t, uct_iface_ops_t *tl_ops,
                                               config->rx.queue_len / 4);
     self->config.port_num           = port_num;
     /* initialize to invalid value */
-    self->config.sl                 = UCT_IB_SL_NUM;
-    self->config.reverse_sl         = UCT_IB_SL_NUM;
+    self->config.sl                                   = UCT_IB_SL_NUM;
+    self->config.reverse_sl                           = UCT_IB_SL_NUM;
+    uct_ib_iface_config_set_priority_sls(self, UCT_IB_SL_NUM, UCT_IB_SL_NUM);
+
     self->config.hop_limit          = config->hop_limit;
     self->release_desc.cb           = uct_ib_iface_release_desc;
     self->config.qp_type            = init_attr->qp_type;

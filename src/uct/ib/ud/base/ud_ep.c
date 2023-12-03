@@ -392,8 +392,9 @@ UCS_CLASS_INIT_FUNC(uct_ud_ep_t, uct_ud_iface_t *iface,
 
     uct_ud_enter(iface);
 
-    self->dest_ep_id = UCT_UD_EP_NULL_ID;
-    self->path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
+    self->dest_ep_id     = UCT_UD_EP_NULL_ID;
+    self->path_index     = UCT_EP_PARAMS_GET_PATH_INDEX(params);
+    self->super.priority = UCT_EP_PARAMS_GET_PRIORITY(params);
     uct_ud_ep_reset(self);
     uct_ud_iface_add_ep(iface, self);
     self->tx.tick = iface->tx.tick;

@@ -1044,6 +1044,7 @@ ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
     ucs_status_t status;
 
     uct_ep_params->field_mask |= UCT_EP_PARAM_FIELD_PRIORITY;
+    uct_ep_params->priority    = UCS_PRIORITY_HIGH;
     status                     = uct_ep_create(uct_ep_params, &uct_ep);
 
     if (status != UCS_OK) {

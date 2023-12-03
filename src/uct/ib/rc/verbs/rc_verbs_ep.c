@@ -637,7 +637,8 @@ uct_rc_verbs_ep_connect_to_ep_v2(uct_ep_h tl_ep,
     enum ibv_mtu path_mtu;
 
     uct_ib_iface_fill_ah_attr_from_addr(&iface->super, ib_addr,
-                                        ep->super.path_index, &ah_attr,
+                                        ep->super.path_index, ep->super.super.priority,
+                                        &ah_attr,
                                         &path_mtu);
     ucs_assert(path_mtu != UCT_IB_ADDRESS_INVALID_PATH_MTU);
 

@@ -167,7 +167,7 @@ public:
 
         uct_ib_iface_fill_ah_attr_from_gid_lid(iface, lid, &gid,
                                                iface->gid_info.gid_index, 0,
-                                               &ah_attr);
+                                               UCS_PRIORITY_DEFAULT, &ah_attr);
 
         if (uct_ib_iface_is_roce(iface)) {
             /* in case of roce, should be global */

@@ -371,7 +371,7 @@ ucs_status_t uct_ib_mlx5_get_compact_av(uct_ib_iface_t *iface, int *compact_av)
         return status;
     }
 
-    uct_ib_iface_fill_ah_attr_from_addr(iface, ib_addr, 0, &ah_attr, &path_mtu);
+    uct_ib_iface_fill_ah_attr_from_addr(iface, ib_addr, 0, UCS_PRIORITY_DEFAULT, &ah_attr, &path_mtu);
     ah_attr.is_global = iface->config.force_global_addr;
     status = uct_ib_iface_create_ah(iface, &ah_attr, "compact AV check", &ah);
     if (status != UCS_OK) {
@@ -1058,9 +1058,10 @@ uct_ib_mlx5_iface_select_sl(uct_ib_iface_t *iface,
                                    iface->config.port_num)) {
         /* Ethernet priority for RoCE devices can't be selected regardless
          * AR support requested by user, pass empty ooo_sl_mask */
-        return uct_ib_mlx5_select_sl(ib_config, UCS_NO, 0, 1, dev_name,
-                                     iface->config.port_num,
-                                     &iface->config.sl);
+        status = uct_ib_mlx5_select_sl(ib_config, UCS_NO, 0, 1, dev_name,
+                                       iface->config.port_num,
+                                       &iface->config.sl);
+        return status;
     }
 
 #if HAVE_DEVX
@@ -1073,10 +1074,10 @@ uct_ib_mlx5_iface_select_sl(uct_ib_iface_t *iface,
     status = UCS_ERR_UNSUPPORTED;
 #endif
 
-    return uct_ib_mlx5_select_sl(ib_config, ib_mlx5_config->ar_enable,
-                                 ooo_sl_mask, status == UCS_OK, dev_name,
-                                 iface->config.port_num,
-                                 &iface->config.sl);
+    status = uct_ib_mlx5_select_sl(ib_config, ib_mlx5_config->ar_enable,
+                                   ooo_sl_mask, status == UCS_OK, dev_name,
+                                   iface->config.port_num, &iface->config.sl);
+    return status;
 }
 
 uint8_t uct_ib_mlx5_iface_get_counter_set_id(uct_ib_iface_t *iface)

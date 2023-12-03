@@ -179,6 +179,9 @@ enum {
 #define UCT_EP_PARAMS_GET_PATH_INDEX(_params) \
     UCT_EP_PARAM_VALUE(_params, path_index, PATH_INDEX, 0)
 
+#define UCT_EP_PARAMS_GET_PRIORITY(_params) \
+    UCT_EP_PARAM_VALUE(_params, priority, PRIORITY, UCS_PRIORITY_DEFAULT)
+
 
 #define UCT_IFACE_PARAM_FEATURE(_params, _feature) \
     (UCT_IFACE_PARAM_VALUE(_params, features, FEATURES, UINT64_MAX) & \
@@ -369,6 +372,7 @@ typedef struct uct_keepalive_info {
  */
 typedef struct uct_base_ep {
     uct_ep_t          super;
+    ucs_priority_t    priority;
     UCS_STATS_NODE_DECLARE(stats)
 } uct_base_ep_t;
 UCS_CLASS_DECLARE(uct_base_ep_t, uct_base_iface_t*);

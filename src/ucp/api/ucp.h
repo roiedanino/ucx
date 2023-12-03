@@ -816,19 +816,6 @@ enum ucp_am_handler_param_field {
     UCP_AM_HANDLER_PARAM_FIELD_ARG     = UCS_BIT(3)
 };
 
-/**
- * @ingroup UCP_COMM
- * @brief UCP request priority level
- * 
- * The enumeration lists available priority levels which are set per request, 
- * Message priority is an optional attribute of @ref ucp_request_param_t, 
- * value will be propogated to transports which are capable of prioritizing messages.
-*/
-typedef enum {
-    UCP_PRIORITY_DEFAULT,
-    UCP_PRIORITY_HIGH
-} ucp_priority_t;
-
 
 /**
  * @ingroup UCP_DATATYPE
@@ -1834,10 +1821,12 @@ typedef struct {
     ucp_mem_h memh;
 
     /**
-     * Enumerated value, indicates message priority, priority is not guaranteed 
+     * enumerated value, indicates message priority, priority is not guaranteed 
      * and depends on the capabilities of the selected transport.
+     * 
+     * ordering is not guarenteed across different priorities
      */
-    ucp_priority_t priority;
+    ucs_priority_t priority;
 
 } ucp_request_param_t;
 

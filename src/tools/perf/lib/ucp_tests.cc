@@ -207,6 +207,8 @@ public:
             params.reply_buffer  = reply_buffer;
         }
 
+        params.priority = UCS_PRIORITY_HIGH;
+
         fill_prereg_params(params, m_perf.ucp.send_memh);
     }
 

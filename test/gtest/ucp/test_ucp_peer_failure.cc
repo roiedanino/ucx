@@ -697,7 +697,7 @@ protected:
                 continue;
             }
 
-            auto iface  = ucp_ep_get_lane(ep, lane)->iface;
+            auto iface  = ucp_ep_get_lane(ep, lane, NULL)->iface;
             auto result = m_sender_uct_ops.emplace(iface, iface->ops);
             if (result.second) {
                 iface->ops.ep_put_zcopy = return_err_connection_reset;

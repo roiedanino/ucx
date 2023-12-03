@@ -326,7 +326,7 @@ int ucp_request_pending_add(ucp_request_t *req)
     ucs_status_t status;
     uct_ep_h uct_ep;
 
-    uct_ep = ucp_ep_get_lane(req->send.ep, req->send.lane);
+    uct_ep = ucp_ep_get_lane(req->send.ep, req->send.lane, req);
     status = uct_ep_pending_add(uct_ep, &req->send.uct, 0);
     if (status == UCS_OK) {
         ucs_trace_data("ep %p: added pending uct request %p to lane[%d]=%p",

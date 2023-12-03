@@ -229,10 +229,16 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_request_lookup_proto(
 }
 
 static UCS_F_ALWAYS_INLINE void
-ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags)
+ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags,
+                            const ucp_request_param_t *param)
 {
-    req->flags   = UCP_REQUEST_FLAG_PROTO_SEND | flags;
-    req->send.ep = ep;
+    req->flags         = UCP_REQUEST_FLAG_PROTO_SEND | flags;
+    req->send.ep       = ep;
+    if (param == NULL) {
+        return;
+    }
+    req->send.priority = UCP_REQUEST_PARAM_FIELD(param, PRIORITY, priority,
+                                                 UCS_PRIORITY_DEFAULT);
 }
 
 
@@ -288,7 +294,7 @@ ucp_proto_request_send_op(ucp_ep_h ep, ucp_proto_select_t *proto_select,
     size_t msg_length;
     uint8_t sg_count;
 
-    ucp_proto_request_send_init(req, ep, 0);
+    ucp_proto_request_send_init(req, ep, 0, param);
 
     status = UCS_PROFILE_CALL(ucp_datatype_iter_init, worker->context,
                               (void*)buffer, count, datatype, contig_length, 1,
@@ -322,7 +328,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_reply(
     ucs_status_t status;
     uint8_t sg_count;
 
-    ucp_proto_request_send_init(req, ep, 0);
+    ucp_proto_request_send_init(req, ep, 0, param);
 
     status = UCS_PROFILE_CALL(ucp_datatype_iter_init, context, (void*)buffer,
                               count, datatype, contig_length, 1,

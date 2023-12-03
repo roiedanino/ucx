@@ -134,7 +134,7 @@ ucs_status_t ucp_do_am_bcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
     req->send.lane = (!enable_am_bw || (state.offset == 0)) ? /* first part of message must be sent */
                      ucp_ep_get_am_lane(ep) :                 /* via AM lane */
                      ucp_send_request_get_am_bw_lane(req);
-    uct_ep         = ucp_ep_get_lane(ep, req->send.lane);
+    uct_ep         = ucp_ep_get_lane(ep, req->send.lane, req);
 
     for (;;) {
         if (state.offset == 0) {
@@ -318,7 +318,7 @@ ucs_status_t ucp_am_zcopy_common(ucp_request_t *req, const void *hdr,
                              user_hdr_desc->memh->uct[md_idx], &iov_count);
     }
 
-    return uct_ep_am_zcopy(ucp_ep_get_lane(ep, req->send.lane), am_id, (void*)hdr,
+    return uct_ep_am_zcopy(ucp_ep_get_lane(ep, req->send.lane, req), am_id, (void*)hdr,
                            hdr_size, iov, iov_count, 0,
                            &req->send.state.uct_comp);
 }

@@ -112,7 +112,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_am_eager_multi_bcopy_send_func(
         ucp_datatype_iter_t *next_iter, ucp_lane_index_t *lane_shift)
 {
     ucp_ep_t *ep    = req->send.ep;
-    uct_ep_h uct_ep = ucp_ep_get_lane(ep, lpriv->super.lane);
+    uct_ep_h uct_ep = ucp_ep_get_lane(ep, lpriv->super.lane, req);
     ucp_proto_multi_pack_ctx_t pack_ctx = {
         .req       = req,
         .next_iter = next_iter
@@ -274,7 +274,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_am_eager_multi_zcopy_send_func(
     ucp_am_eager_zcopy_add_footer(req, footer_offset, lpriv->super.md_index,
                                   iov, &iov_count, footer_size);
 
-    return uct_ep_am_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
+    return uct_ep_am_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane, req),
                            am_id, &hdr, sizeof(ucp_am_hdr_t), iov, iov_count, 0,
                            &req->send.state.uct_comp);
 }

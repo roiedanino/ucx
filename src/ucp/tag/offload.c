@@ -574,7 +574,7 @@ ucs_status_t ucp_tag_offload_sw_rndv(uct_pending_req_t *self)
     rndv_rts_hdr = ucs_alloca(rndv_hdr_len);
     packed_len   = ucp_tag_rndv_rts_pack(rndv_rts_hdr, req);
 
-    status = uct_ep_tag_rndv_request(ucp_ep_get_lane(ep, req->send.lane),
+    status = uct_ep_tag_rndv_request(ucp_ep_get_lane(ep, req->send.lane, req),
                                      req->send.msg_proto.tag, rndv_rts_hdr,
                                      packed_len, 0);
     return ucp_rndv_send_handle_status_from_pending(req, status);
@@ -616,7 +616,7 @@ ucs_status_t ucp_tag_offload_rndv_zcopy(uct_pending_req_t *self)
                         req->send.buffer, req->send.datatype, req->send.length,
                         ucp_ep_md_index(ep, req->send.lane), NULL);
 
-    rndv_op = uct_ep_tag_rndv_zcopy(ucp_ep_get_lane(ep, req->send.lane),
+    rndv_op = uct_ep_tag_rndv_zcopy(ucp_ep_get_lane(ep, req->send.lane, req),
                                     req->send.msg_proto.tag, &rndv_hdr,
                                     sizeof(rndv_hdr), iov, iovcnt, 0,
                                     &req->send.state.uct_comp);
@@ -639,8 +639,8 @@ void ucp_tag_offload_cancel_rndv(ucp_request_t *req)
     ucp_ep_t *ep = req->send.ep;
     ucs_status_t status;
 
-    status = uct_ep_tag_rndv_cancel(ucp_ep_get_lane(ep,
-                                                    ucp_ep_get_tag_lane(ep)),
+    status = uct_ep_tag_rndv_cancel(ucp_ep_get_lane(ep, ucp_ep_get_tag_lane(ep),
+                                                    req),
                                     req->send.tag_offload.rndv_op);
     if (status != UCS_OK) {
         ucs_error("Failed to cancel tag rndv op %s", ucs_status_string(status));

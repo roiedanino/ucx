@@ -1091,7 +1091,7 @@ public:
 
         for (ucp_lane_index_t lane = 0;
              lane < ucp_ep_num_lanes(sender().ep()); lane++) {
-            uct_ep_h uct_ep = ucp_ep_get_lane(sender().ep(), lane);
+            uct_ep_h uct_ep = ucp_ep_get_lane(sender().ep(), lane, NULL);
             if (uct_ep == NULL) {
                 continue;
             }

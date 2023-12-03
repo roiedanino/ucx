@@ -1219,7 +1219,8 @@ public:
 
     uint64_t get_bytes_sent(ucp_ep_h ep, int lane_index)
     {
-        uct_base_ep_t *uct_ep = ucs_derived_of(ucp_ep_get_lane(ep, lane_index),
+        uct_base_ep_t *uct_ep = ucs_derived_of(ucp_ep_get_lane(ep, lane_index,
+                                                               NULL),
                                                uct_base_ep_t);
 
         return UCS_STATS_GET_COUNTER(uct_ep->stats, UCT_EP_STAT_BYTES_SHORT) +

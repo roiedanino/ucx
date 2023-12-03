@@ -772,7 +772,7 @@ UCS_PROFILE_FUNC_VOID(ucp_proto_rndv_receive_start,
     }
 
     /* Initialize send request */
-    ucp_proto_request_send_init(req, ep, 0);
+    ucp_proto_request_send_init(req, ep, 0, NULL);
     req->send.rndv.remote_req_id  = rts->sreq.req_id;
     req->send.rndv.remote_address = rts->address;
     req->send.rndv.offset         = 0;

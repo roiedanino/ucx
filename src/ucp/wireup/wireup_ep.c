@@ -563,7 +563,8 @@ int ucp_wireup_aux_ep_is_owner(ucp_wireup_ep_t *wireup_ep, uct_ep_h owned_ep)
     return (wireup_ep->aux_ep == owned_ep) ||
            /* Auxiliary EP can be WIREUP EP in case of it is on CM lane */
            ((wireup_ep->aux_ep != NULL) && (cm_lane_idx != UCP_NULL_LANE) &&
-            (ucp_ep_get_lane(ucp_ep, cm_lane_idx) == &wireup_ep->super.super) &&
+            (ucp_ep_get_lane(ucp_ep, cm_lane_idx, NULL) ==
+             &wireup_ep->super.super) &&
             ucp_wireup_ep_is_owner(wireup_ep->aux_ep, owned_ep));
 }
 
@@ -635,7 +636,7 @@ void ucp_wireup_eps_pending_extract(ucp_ep_t *ucp_ep, ucs_queue_head_t *queue)
     }
 
     for (lane_idx = 0; lane_idx < ucp_ep_num_lanes(ucp_ep); ++lane_idx) {
-        uct_ep = ucp_ep_get_lane(ucp_ep, lane_idx);
+        uct_ep = ucp_ep_get_lane(ucp_ep, lane_idx, NULL);
         /* When creating EP with remote worker address
          * EP is using transport lanes only, with no CM lane. */
         if ((uct_ep == NULL) || (ucp_wireup_ep(uct_ep) == NULL)) {

@@ -107,7 +107,7 @@ static void ucp_ep_flush_progress(ucp_request_t *req)
 
         /* Search for next lane to start flush */
         lane   = ucs_ffs64(all_lanes & ~req->send.flush.started_lanes);
-        uct_ep = ucp_ep_get_lane(ep, lane);
+        uct_ep = ucp_ep_get_lane(ep, lane, req);
         if (uct_ep == NULL) {
             ucp_ep_flush_request_update_uct_comp(req, -1, UCS_BIT(lane));
             continue;
@@ -275,10 +275,10 @@ ucs_status_t ucp_ep_flush_progress_pending(uct_pending_req_t *self)
     ucs_assertv(lane != UCP_NULL_LANE, "ep=%p flush_req=%p lane=%d",
                 ep, req, lane);
 
-    status = uct_ep_flush(ucp_ep_get_lane(ep, lane), req->send.flush.uct_flags,
-                          &req->send.state.uct_comp);
+    status = uct_ep_flush(ucp_ep_get_lane(ep, lane, req),
+                          req->send.flush.uct_flags, &req->send.state.uct_comp);
     ucp_trace_req(req, "flush ep %p lane[%d]=%p: %s", ep, lane,
-                  ucp_ep_get_lane(ep, lane), ucs_status_string(status));
+                  ucp_ep_get_lane(ep, lane, req), ucs_status_string(status));
     if (status == UCS_OK) {
         ucp_ep_flush_request_update_uct_comp(req, -1, UCS_BIT(lane));
     } else if (status == UCS_INPROGRESS) {

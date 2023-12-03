@@ -458,7 +458,8 @@ ucp_worker_iface_handle_uct_ep_failure(ucp_ep_h ucp_ep, ucp_lane_index_t lane,
         return UCS_OK;
     }
 
-    wireup_ep = ucp_wireup_ep(ucp_ep_get_lane(ucp_ep, lane));
+    //TODO: same for priority_lanes
+    wireup_ep = ucp_wireup_ep(ucp_ep_get_lane(ucp_ep, lane, NULL));
     if ((wireup_ep == NULL) ||
         !ucp_wireup_aux_ep_is_owner(wireup_ep, uct_ep) ||
         !ucp_ep_is_local_connected(ucp_ep)) {
@@ -3371,7 +3372,8 @@ static int ucp_worker_do_ep_keepalive(ucp_worker_h worker, ucs_time_t now)
     }
 
     lane      = ucp_ep_config(ep)->key.keepalive_lane;
-    uct_ep    = ucp_ep_get_lane(ep, lane);
+    //TODO: same for priority_lanes
+    uct_ep    = ucp_ep_get_lane(ep, lane, NULL);
     rsc_index = ucp_ep_get_rsc_index(ep, lane);
 
     ucs_assertv((rsc_index != UCP_NULL_RESOURCE) ||

@@ -26,7 +26,7 @@ ucp_proto_am_bcopy_single_send(ucp_request_t *req, ucp_am_id_t am_id,
     uint64_t *buffer;
 
     uct_ep = fast_path ? ucp_ep_get_fast_lane(ep, lane) :
-                         ucp_ep_get_lane(ep, lane);
+                         ucp_ep_get_lane(ep, lane, req);
 
     if ((max_packed_size <= UCS_ALLOCA_MAX_SIZE) &&
         (iface_attr->cap.flags & UCT_IFACE_FLAG_AM_SHORT) &&

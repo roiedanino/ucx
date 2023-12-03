@@ -380,7 +380,7 @@ ucp_wireup_cm_ep_cleanup(ucp_ep_t *ucp_ep)
         /* During discarding, UCT EP's pending queues 
          * are expected to be empty */
         ucp_worker_discard_uct_ep(
-                ucp_ep, ucp_ep_get_lane(ucp_ep, lane_idx),
+                ucp_ep, ucp_ep_get_lane(ucp_ep, lane_idx, NULL),
                 ucp_ep_get_rsc_index(ucp_ep, lane_idx), UCT_FLUSH_FLAG_CANCEL,
                 (uct_pending_purge_callback_t)ucs_empty_function_do_assert_void,
                 NULL, (ucp_send_nbx_callback_t)ucs_empty_function, NULL);
@@ -419,8 +419,8 @@ static ucs_status_t ucp_cm_ep_init_lanes(ucp_ep_h ep,
         UCS_BITMAP_SET(*tl_bitmap, rsc_idx);
         if (ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane_idx)) {
             path_index = ucp_ep_get_path_index(ep, lane_idx);
-            status     = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane_idx), 0,
-                                               rsc_idx, path_index, 0, NULL);
+            status = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane_idx, NULL),
+                                           0, rsc_idx, path_index, 0, NULL);
             if (status != UCS_OK) {
                 goto out;
             }
@@ -1418,7 +1418,7 @@ ucp_ep_cm_connect_server_lane(ucp_ep_h ep, uct_listener_h uct_listener,
     uct_ep_h uct_ep;
     ucs_status_t status;
 
-    ucs_assert(ucp_ep_get_lane(ep, lane) == NULL);
+    ucs_assert(ucp_ep_get_lane(ep, lane, NULL) == NULL);
 
     ucp_wireup_get_dst_rsc_indices(ep, &ucp_ep_config(ep)->key,
                                    remote_address, addr_indices,
@@ -1479,7 +1479,7 @@ ucp_ep_cm_connect_server_lane(ucp_ep_h ep, uct_listener_h uct_listener,
         goto err;
     }
 
-    ucp_wireup_ep_set_next_ep(ucp_ep_get_lane(ep, lane), uct_ep,
+    ucp_wireup_ep_set_next_ep(ucp_ep_get_lane(ep, lane, NULL), uct_ep,
                               UCP_NULL_RESOURCE);
     ucp_ep_update_flags(ep, UCP_EP_FLAG_LOCAL_CONNECTED, 0);
     return UCS_OK;

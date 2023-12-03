@@ -948,7 +948,7 @@ protected:
                 continue;
             }
 
-            uct_iface_h uct_iface = ucp_ep_get_lane(ep, lane)->iface;
+            uct_iface_h uct_iface = ucp_ep_get_lane(ep, lane, NULL)->iface;
             auto res              = m_sender_uct_ops.emplace(uct_iface,
                                                              uct_iface->ops);
             if (res.second) {
@@ -1535,7 +1535,7 @@ protected:
         } else {
             /* Make sure that stub WIREUP_EP is updated */
             for (auto lane = 0; lane < ucp_ep_num_lanes(e.ep()); ++lane) {
-                set_iface_failure(ucp_ep_get_lane(e.ep(), lane)->iface,
+                set_iface_failure(ucp_ep_get_lane(e.ep(), lane, NULL)->iface,
                                   fail_wireup_type);
             }
             for (auto iface_id = 0; iface_id < worker->num_ifaces;

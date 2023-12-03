@@ -108,7 +108,7 @@ ucp_proto_multi_no_resource(ucp_request_t *req, ucp_lane_index_t lane)
     }
 
     /* failed to send on another lane - add to its pending queue */
-    uct_ep = ucp_ep_get_lane(req->send.ep, lane);
+    uct_ep = ucp_ep_get_lane(req->send.ep, lane, req);
     status = uct_ep_pending_add(uct_ep, &req->send.uct, 0);
     if (status == UCS_ERR_BUSY) {
         /* try sending again */
@@ -304,7 +304,7 @@ ucp_proto_am_bcopy_multi_common_send_func(
     }
     pack_ctx.max_payload = ucp_proto_multi_max_payload(req, lpriv, hdr_size);
 
-    uct_ep      = ucp_ep_get_lane(ep, lpriv->super.lane);
+    uct_ep      = ucp_ep_get_lane(ep, lpriv->super.lane, req);
     packed_size = uct_ep_am_bcopy(uct_ep, am_id, pack_cb, &pack_ctx, 0);
 
     return ucp_proto_bcopy_send_func_status(packed_size);
@@ -339,7 +339,7 @@ ucp_proto_am_zcopy_multi_common_send_func(
                                              max_payload, lpriv->super.md_index,
                                              UCP_DT_MASK_CONTIG_IOV, next_iter,
                                              iov, lpriv->super.max_iov);
-    return uct_ep_am_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
+    return uct_ep_am_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane, req),
                            am_id, hdr, hdr_size, iov, iov_count, 0,
                            &req->send.state.uct_comp);
 }

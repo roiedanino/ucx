@@ -1047,9 +1047,8 @@ static int ucp_wireup_should_activate_wiface(ucp_worker_iface_t *wiface,
            (wiface->flags & UCP_WORKER_IFACE_FLAG_KEEP_ACTIVE);
 }
 
-static ucs_status_t
-ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
-                              uct_ep_params_t *uct_ep_params)
+ucs_status_t ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
+                                           uct_ep_params_t *uct_ep_params)
 {
     uct_ep_h uct_ep;
     ucs_status_t status;
@@ -1067,10 +1066,11 @@ ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
     return UCS_OK;
 }
 
-static int
-ucp_wireup_should_create_priority_ep(const ucp_worker_iface_t *wiface)
+int ucp_wireup_should_create_priority_ep(ucp_worker_iface_t *wiface)
 {
-    return wiface->attr.cap.flags & UCT_IFACE_FLAG_MESSAGE_PRIORITY;
+    return 1;
+    // uct_iface_query(wiface->iface, &wiface->attr);
+    // return wiface->attr.cap.flags & UCT_IFACE_FLAG_MESSAGE_PRIORITY;
 }
 
 static ucs_status_t
@@ -1100,6 +1100,12 @@ ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
     uct_ep_params.dev_addr   = address->dev_addr;
     uct_ep_params.iface_addr = address->iface_addr;
     uct_ep_params.path_index = path_index;
+
+    if (ucp_wireup_should_create_priority_ep(wiface)) {
+        ucp_wireup_create_priority_ep(ep, lane, &uct_ep_params);
+        ucs_warn("created priority_ep");
+    }
+
     status = uct_ep_create(&uct_ep_params, &uct_ep);
     if (status != UCS_OK) {
         /* coverity[leaked_storage] */
@@ -1143,11 +1149,6 @@ ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
         ucp_wireup_ep_lane_set_next_ep(ep, lane, uct_ep);
     }
 
-    if (ucp_wireup_should_create_priority_ep(wiface)) {
-        ucp_wireup_create_priority_ep(ep, lane, &uct_ep_params);
-        ucs_warn("created priority_ep");
-    }
-
     if (ucp_wireup_should_activate_wiface(wiface, ep, lane)) {
         ucp_worker_iface_progress_ep(wiface);
     }
@@ -1186,7 +1187,7 @@ ucp_wireup_connect_lane_to_ep(ucp_ep_h ep, unsigned ep_init_flags,
                   (lane == ucp_ep_get_wireup_msg_lane(ep));
     status      = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane, NULL),
                                         ep_init_flags, rsc_index, path_index,
-                                        connect_aux, remote_address);
+                                        connect_aux, remote_address, lane);
     if (status != UCS_OK) {
         return status;
     }

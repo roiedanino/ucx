@@ -456,11 +456,13 @@ ucp_rsc_index_t ucp_wireup_ep_get_aux_rsc_index(uct_ep_h uct_ep)
 ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
                                    ucp_rsc_index_t rsc_index,
                                    unsigned path_index, int connect_aux,
-                                   const ucp_unpacked_address_t *remote_address)
+                                   const ucp_unpacked_address_t *remote_address,
+                                   ucp_lane_index_t lane)
 {
     ucp_wireup_ep_t *wireup_ep     = ucp_wireup_ep(uct_ep);
     ucp_ep_h ucp_ep                = wireup_ep->super.ucp_ep;
     ucp_worker_h worker            = ucp_ep->worker;
+    ucp_worker_iface_t *wiface     = ucp_worker_iface(worker, rsc_index);
     uct_ep_params_t uct_ep_params;
     ucs_status_t status;
     uct_ep_h next_ep;
@@ -470,7 +472,7 @@ ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
     uct_ep_params.field_mask = UCT_EP_PARAM_FIELD_IFACE |
                                UCT_EP_PARAM_FIELD_PATH_INDEX;
     uct_ep_params.path_index = path_index;
-    uct_ep_params.iface      = ucp_worker_iface(worker, rsc_index)->iface;
+    uct_ep_params.iface      = wiface->iface;
     status = uct_ep_create(&uct_ep_params, &next_ep);
     if (status != UCS_OK) {
         /* make Coverity happy */
@@ -479,6 +481,11 @@ ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
     }
 
     ucp_proxy_ep_set_uct_ep(&wireup_ep->super, next_ep, 1, rsc_index);
+
+    if (ucp_wireup_should_create_priority_ep(wiface)) {
+        ucp_wireup_create_priority_ep(ucp_ep, lane, &uct_ep_params);
+        ucs_warn("created priority_ep");
+    }
 
     ucs_debug("ep %p: wireup_ep %p created next_ep %p to %s "
               "using " UCT_TL_RESOURCE_DESC_FMT,

@@ -234,11 +234,12 @@ ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags,
 {
     req->flags         = UCP_REQUEST_FLAG_PROTO_SEND | flags;
     req->send.ep       = ep;
+    req->priority      = UCS_PRIORITY_DEFAULT;
     if (param == NULL) {
         return;
     }
-    req->send.priority = UCP_REQUEST_PARAM_FIELD(param, PRIORITY, priority,
-                                                 UCS_PRIORITY_DEFAULT);
+    req->priority = UCP_REQUEST_PARAM_FIELD(param, PRIORITY, priority,
+                                            UCS_PRIORITY_DEFAULT);
 }
 
 

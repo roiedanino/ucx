@@ -94,7 +94,8 @@ ucp_rsc_index_t ucp_wireup_ep_get_aux_rsc_index(uct_ep_h uct_ep);
 ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ucp_ep_init_flags,
                                    ucp_rsc_index_t rsc_index,
                                    unsigned path_index, int connect_aux,
-                                   const ucp_unpacked_address_t *remote_address);
+                                   const ucp_unpacked_address_t *remote_address,
+                                   ucp_lane_index_t lane);
 
 void ucp_wireup_ep_pending_queue_purge(uct_ep_h uct_ep,
                                        uct_pending_purge_callback_t cb,

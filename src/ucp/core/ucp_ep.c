@@ -226,11 +226,11 @@ static ucp_ep_h ucp_ep_allocate(ucp_worker_h worker, const char *peer_name)
 #endif
     ep->ext->peer_mem                     = NULL;
     ep->ext->uct_eps                      = NULL;
-    ep->ext->uct_priority_eps             = NULL;
 
     UCS_STATIC_ASSERT(sizeof(ep->ext->ep_match) >=
                       sizeof(ep->ext->flush_state));
     memset(&ep->ext->ep_match, 0, sizeof(ep->ext->ep_match));
+    memset(ep->ext->uct_priority_eps, 0, sizeof(*ep->ext->uct_priority_eps));
 
     ucs_hlist_head_init(&ep->ext->proto_reqs);
 
@@ -1562,6 +1562,14 @@ void ucp_ep_set_failed_schedule(ucp_ep_h ucp_ep, ucp_lane_index_t lane,
     ucp_worker_signal_internal(worker);
 }
 
+void ucp_ep_cleanup_uct_ep(ucp_ep_h ep, uct_ep_h uct_ep, ucp_lane_index_t lane)
+{
+    ucs_debug("ep %p: pending & destroy uct_ep[%d]=%p", ep, lane, uct_ep);
+    uct_ep_pending_purge(uct_ep, ucp_destroyed_ep_pending_purge, ep);
+    ucp_ep_unprogress_uct_ep(ep, uct_ep, ucp_ep_get_rsc_index(ep, lane));
+    uct_ep_destroy(uct_ep);
+}
+
 void ucp_ep_cleanup_lanes(ucp_ep_h ep)
 {
     uct_ep_h uct_eps[UCP_MAX_LANES] = { NULL };
@@ -1578,11 +1586,15 @@ void ucp_ep_cleanup_lanes(ucp_ep_h ep)
         if (uct_ep == NULL) {
             continue;
         }
+        ucp_ep_cleanup_uct_ep(ep, uct_ep, lane);
 
-        ucs_debug("ep %p: pending & destroy uct_ep[%d]=%p", ep, lane, uct_ep);
-        uct_ep_pending_purge(uct_ep, ucp_destroyed_ep_pending_purge, ep);
-        ucp_ep_unprogress_uct_ep(ep, uct_ep, ucp_ep_get_rsc_index(ep, lane));
-        uct_ep_destroy(uct_ep);
+        uct_ep = ep->ext->uct_priority_eps[lane];
+
+        if (uct_ep == NULL) {
+            continue;
+        }
+
+        ucp_ep_cleanup_uct_ep(ep, uct_ep, lane);
     }
 }
 
@@ -1795,11 +1807,13 @@ ucp_lane_index_t ucp_ep_lookup_lane(ucp_ep_h ucp_ep, uct_ep_h uct_ep)
 
     for (lane = 0; lane < ucp_ep_num_lanes(ucp_ep); ++lane) {
         if ((uct_ep == ucp_ep_get_lane(ucp_ep, lane, NULL)) ||
-            ucp_wireup_ep_is_owner(ucp_ep_get_lane(ucp_ep, lane, NULL), uct_ep)) {
+            ucp_wireup_ep_is_owner(ucp_ep_get_lane(ucp_ep, lane, NULL), uct_ep)
+            || (uct_ep == ucp_ep_get_priority_lane(ucp_ep, lane))) {
             return lane;
         }
         /*TODO: check priority lanes as well*/
     }
+
 
     return UCP_NULL_LANE;
 }

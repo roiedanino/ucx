@@ -383,7 +383,6 @@ struct ucp_request {
             ucp_lane_index_t      lane;            /* Lane on which this request is being sent */
             uint8_t               proto_stage;     /* Protocol current stage */
             uct_pending_req_t     uct;             /* UCT pending request */
-            ucs_priority_t        priority;        /* Message priority */
         } send;
 
         /* "receive" part - used for tag_recv, am_recv and stream_recv operations */
@@ -458,6 +457,7 @@ struct ucp_request {
             unsigned                uct_flags;    /* Flags to pass to @ref uct_ep_flush */
         } flush_worker;
     };
+    ucs_priority_t priority;
 };
 
 

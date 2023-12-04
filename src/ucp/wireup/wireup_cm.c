@@ -420,7 +420,8 @@ static ucs_status_t ucp_cm_ep_init_lanes(ucp_ep_h ep,
         if (ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane_idx)) {
             path_index = ucp_ep_get_path_index(ep, lane_idx);
             status = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane_idx, NULL),
-                                           0, rsc_idx, path_index, 0, NULL);
+                                           0, rsc_idx, path_index, 0, NULL,
+                                           lane_idx);
             if (status != UCS_OK) {
                 goto out;
             }

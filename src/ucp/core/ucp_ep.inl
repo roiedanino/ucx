@@ -35,7 +35,7 @@ ucp_ep_get_lane(ucp_ep_h ep, ucp_lane_index_t lane_index, const ucp_request_t *r
 {
     ucs_assertv(lane_index < UCP_MAX_LANES, "lane=%d", lane_index);
 
-    if ((request != NULL) && (request->send.priority == UCS_PRIORITY_HIGH) &&
+    if ((request != NULL) && (request->priority == UCS_PRIORITY_HIGH) &&
         (ep->ext->uct_priority_eps != NULL) &&
         (ep->ext->uct_priority_eps[lane_index] != NULL)) {
         return ep->ext->uct_priority_eps[lane_index];

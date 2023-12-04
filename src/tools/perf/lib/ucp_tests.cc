@@ -192,7 +192,9 @@ public:
     {
         params.op_attr_mask = UCP_OP_ATTR_FIELD_DATATYPE |
                               UCP_OP_ATTR_FIELD_CALLBACK |
-                              UCP_OP_ATTR_FIELD_USER_DATA | op_attr_mask;
+                              UCP_OP_ATTR_FIELD_USER_DATA |
+                              UCP_OP_ATTR_FIELD_PRIORITY |
+                              op_attr_mask;
         params.datatype     = send_dt;
         params.cb.send      = cb;
         params.user_data    = this;

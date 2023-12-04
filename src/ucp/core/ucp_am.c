@@ -746,6 +746,8 @@ static void ucp_am_send_req_init(ucp_request_t *req, ucp_ep_h ep,
     req->send.datatype                     = datatype;
     req->send.lane                         = ep->am_lane;
     req->send.pending_lane                 = UCP_NULL_LANE;
+    req->priority = UCP_REQUEST_PARAM_FIELD(param, PRIORITY, priority,
+                                            UCS_PRIORITY_DEFAULT);
 
     ucp_request_send_state_init(req, datatype, count);
     req->send.length   = ucp_dt_length(req->send.datatype, count,
@@ -1017,6 +1019,7 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_send_nbx,
         req->send.msg_proto.am.header.ptr      = (void*)header;
         req->send.msg_proto.am.header.reg_desc = NULL;
         req->send.msg_proto.am.header.length   = header_length;
+        req->priority = UCP_REQUEST_PARAM_FIELD(param, PRIORITY, priority, UCS_PRIORITY_DEFAULT);
         ret = ucp_proto_request_send_op(ep, &ucp_ep_config(ep)->proto_select,
                                         UCP_WORKER_CFG_INDEX_NULL, req, op_id,
                                         buffer, count, datatype, contig_length,

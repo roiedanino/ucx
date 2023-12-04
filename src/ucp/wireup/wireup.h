@@ -222,6 +222,11 @@ double ucp_wireup_iface_lat_distance_v2(const ucp_worker_iface_t *wiface);
 
 double ucp_wireup_iface_bw_distance(const ucp_worker_iface_t *wiface);
 
+ucs_status_t ucp_wireup_create_priority_ep(ucp_ep_h ep, ucp_lane_index_t lane,
+                                           uct_ep_params_t *uct_ep_params);
+
+int ucp_wireup_should_create_priority_ep(ucp_worker_iface_t *wiface);
+
 static inline int ucp_wireup_lane_types_has_fast_path(ucp_lane_map_t lane_types)
 {
     return lane_types &

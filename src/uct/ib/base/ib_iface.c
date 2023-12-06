@@ -784,7 +784,6 @@ void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
 
     ucs_assert(iface->config.sl < UCT_IB_SL_NUM);
 
-    ucs_warn("Priority in ah_attr is: %d", (int)priority);
     if (priority == UCS_PRIORITY_DEFAULT) {
         ah_attr->sl = iface->config.sl;
     }

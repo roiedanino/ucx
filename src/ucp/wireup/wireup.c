@@ -422,6 +422,15 @@ ucp_wireup_connect_local(ucp_ep_h ep,
 
         priority_ep = ucp_ep_get_priority_lane(ep, lane);
         if(priority_ep != NULL) {
+            status = ucp_wireup_find_remote_p2p_addr(ep, remote_lane,
+                                                     remote_address,
+                                                     &address_entry, &ep_entry);
+            if (status != UCS_OK) {
+                ucs_error("ep %p: no remote ep address for "
+                          "lane[%d]->remote_lane[%d]",
+                          ep, lane, remote_lane);
+                goto out;
+            }
             status = ucp_wireup_ep_connect_to_ep_v2(priority_ep, address_entry,
                                                     ep_entry);
             if (status != UCS_OK) {

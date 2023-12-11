@@ -27,7 +27,7 @@
 
 
 /* Maximal number of protocols in total */
-#define UCP_PROTO_MAX_COUNT         64
+#define UCP_PROTO_MAX_COUNT         64 * 2
 
 
 /* Special value for non-existent protocol */
@@ -80,7 +80,8 @@ enum {
     UCP_PROTO_FLAG_PUT_SHORT = UCS_BIT(1), /* The protocol uses only uct_ep_put_short() */
     UCP_PROTO_FLAG_TAG_SHORT = UCS_BIT(2), /* The protocol uses only
                                               uct_ep_tag_eager_short() */
-    UCP_PROTO_FLAG_INVALID   = UCS_BIT(3)  /* The protocol is a placeholder */
+    UCP_PROTO_FLAG_INVALID   = UCS_BIT(3), /* The protocol is a placeholder */
+    UCP_PROTO_FLAG_PRIORITY  = UCS_BIT(4)
 };
 
 
@@ -179,6 +180,7 @@ typedef struct {
     void                           *priv;       /* Pointer to priv buffer */
     size_t                         *priv_size;  /* Occupied size in priv buffer */
     ucp_proto_caps_t               *caps;       /* Protocol capabilities */
+    uint8_t                        num_priority_lanes; /* Number of priority lanes*/
 } ucp_proto_init_params_t;
 
 

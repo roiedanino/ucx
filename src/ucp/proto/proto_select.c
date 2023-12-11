@@ -252,6 +252,7 @@ ucp_proto_select_init_protocols(ucp_worker_h worker,
         init_params.caps       = proto_caps;
         /* coverity[overrun-local] */
         init_params.proto_name = ucp_proto_id_field(proto_id, name);
+        init_params.num_priority_lanes = 0; /* default value */
 
         ucs_trace("trying %s", ucp_proto_id_field(proto_id, name));
         ucs_log_indent(1);

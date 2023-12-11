@@ -88,6 +88,33 @@ ucp_am_eager_short_proto_progress_common(uct_pending_req_t *self, int is_reply)
 }
 
 static ucs_status_t
+ucp_am_eager_proto_init_common(const ucp_proto_init_params_t *init_params,
+                               const ucp_proto_single_init_params_t *params,
+                               ucp_operation_id_t op_id)
+{
+    ucp_proto_priority_init_params_t priority_params = {
+        .super.super  = *init_params,
+        .lane_type    = params->lane_type,
+        .tl_cap_flags = params->tl_cap_flags
+    };
+    ucs_status_t status;
+
+    if (!ucp_am_check_init_params(init_params, UCS_BIT(op_id),
+                                  UCP_PROTO_SELECT_OP_FLAG_AM_RNDV) ||
+        !ucp_proto_is_short_supported(select_param))
+    {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    status = ucp_proto_single_init(params);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    return ucp_proto_priority_init(&priority_params);
+}
+
+static ucs_status_t
 ucp_am_eager_short_proto_init_common(const ucp_proto_init_params_t *init_params,
                                      ucp_operation_id_t op_id)
 {
@@ -112,16 +139,30 @@ ucp_am_eager_short_proto_init_common(const ucp_proto_init_params_t *init_params,
                                UCP_PROTO_COMMON_INIT_FLAG_ERR_HANDLING,
         .super.exclude_map   = 0,
         .lane_type           = UCP_LANE_TYPE_AM,
-        .tl_cap_flags        = UCT_IFACE_FLAG_AM_SHORT
+        .tl_cap_flags        = UCT_IFACE_FLAG_AM_SHORT,
+        .super.super.num_priority_lanes = 2
     };
+
+    ucp_proto_priority_init_params_t priority_params = {
+        .super.super  = *init_params,
+        .lane_type    = params.lane_type,
+        .tl_cap_flags = params.tl_cap_flags
+    };
+    ucs_status_t status;
 
     if (!ucp_am_check_init_params(init_params, UCS_BIT(op_id),
                                   UCP_PROTO_SELECT_OP_FLAG_AM_RNDV) ||
-        !ucp_proto_is_short_supported(select_param)) {
+        !ucp_proto_is_short_supported(select_param))
+    {
         return UCS_ERR_UNSUPPORTED;
     }
 
-    return ucp_proto_single_init(&params);
+    status = ucp_proto_single_init(&params);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    return ucp_proto_priority_init(&priority_params);
 }
 
 static ucs_status_t
@@ -238,12 +279,13 @@ static ucs_status_t ucp_am_eager_single_bcopy_proto_init_common(
         .super.hdr_size      = ucp_am_eager_single_hdr_size(op_id),
         .super.send_op       = UCT_EP_OP_AM_BCOPY,
         .super.memtype_op    = UCT_EP_OP_GET_SHORT,
-        .super.flags         = UCP_PROTO_COMMON_INIT_FLAG_SINGLE_FRAG  |
+        .super.flags         = UCP_PROTO_COMMON_INIT_FLAG_SINGLE_FRAG |
                                UCP_PROTO_COMMON_INIT_FLAG_CAP_SEG_SIZE |
                                UCP_PROTO_COMMON_INIT_FLAG_ERR_HANDLING,
         .super.exclude_map   = 0,
         .lane_type           = UCP_LANE_TYPE_AM,
-        .tl_cap_flags        = UCT_IFACE_FLAG_AM_BCOPY
+        .tl_cap_flags        = UCT_IFACE_FLAG_AM_BCOPY,
+        .super.super.num_priority_lanes = 2
     };
 
     if (!ucp_am_check_init_params(init_params, UCS_BIT(op_id),
@@ -334,7 +376,8 @@ static ucs_status_t ucp_am_eager_single_zcopy_proto_init_common(
                                UCP_PROTO_COMMON_INIT_FLAG_ERR_HANDLING,
         .super.exclude_map   = 0,
         .lane_type           = UCP_LANE_TYPE_AM,
-        .tl_cap_flags        = UCT_IFACE_FLAG_AM_ZCOPY
+        .tl_cap_flags        = UCT_IFACE_FLAG_AM_ZCOPY,
+        .super.super.num_priority_lanes = 2
     };
 
     if (!ucp_am_check_init_params(init_params, UCS_BIT(op_id),

@@ -9,6 +9,7 @@
 #endif
 
 #include "proto.h"
+#include "proto_priority_def.h"
 
 #include <ucs/sys/string.h>
 
@@ -73,13 +74,22 @@
 
 #define UCP_PROTO_DECL(_proto) extern ucp_proto_t _proto;
 
+#define UCP_PROTO_PRIORITY_DECL(_proto) extern ucp_proto_t _proto ## __priority;
+
 #define UCP_PROTO_ENTRY(_proto) &_proto,
+
+#define UCP_PROTO_PRIORITY_ENTRY(_proto) &_proto ## __priority,
+
 
 /* Declare all proto objects */
 UCP_PROTO_FOR_EACH(UCP_PROTO_DECL)
+// UCP_PROTO_FOR_EACH(UCP_PROTO_PRIORITY_DECL)
+
+// UCP_PROTO_FOR_EACH(UCP_PRIORITY_PROTO_DECL)
 
 const ucp_proto_t *ucp_protocols[] = {
     UCP_PROTO_FOR_EACH(UCP_PROTO_ENTRY)
+    // UCP_PROTO_FOR_EACH(UCP_PROTO_PRIORITY_ENTRY)
 };
 
 const char *ucp_proto_perf_type_names[] = {

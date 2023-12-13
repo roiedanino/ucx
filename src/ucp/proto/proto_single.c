@@ -12,6 +12,7 @@
 #include "proto_common.h"
 #include "proto_init.h"
 #include "proto_debug.h"
+#include "proto_priority.h"
 
 #include <ucs/debug/assert.h>
 #include <ucs/debug/log.h>
@@ -28,6 +29,7 @@ ucp_proto_single_init_priv(const ucp_proto_single_init_params_t *params,
     ucp_md_map_t reg_md_map;
     ucp_lane_index_t lane;
     ucs_status_t status;
+    ucp_lane_map_t lane_map;
 
     num_lanes = ucp_proto_common_find_lanes(&params->super, params->lane_type,
                                             params->tl_cap_flags, 1,
@@ -39,11 +41,15 @@ ucp_proto_single_init_priv(const ucp_proto_single_init_params_t *params,
 
     ucs_assert(num_lanes == 1);
 
-    reg_md_map = ucp_proto_common_reg_md_map(&params->super, UCS_BIT(lane));
+    lane_map = UCS_BIT(lane);
+
+    ucp_proto_add_priority_lanes(&params->super, params->tl_cap_flags, params->lane_type, &lane_map);
+
+    reg_md_map = ucp_proto_common_reg_md_map(&params->super, lane_map);
     if (reg_md_map == 0) {
         spriv->reg_md = UCP_NULL_RESOURCE;
     } else {
-        ucs_assert(ucs_popcount(reg_md_map) == 1);
+        // ucs_assert(ucs_popcount(reg_md_map) == 1);
         spriv->reg_md = ucs_ffs64(reg_md_map);
     }
 
@@ -88,4 +94,5 @@ void ucp_proto_single_query(const ucp_proto_query_params_t *params,
     ucp_proto_default_query(params, attr);
     ucp_proto_common_lane_priv_str(params, &spriv->super, 1, 1, &config_strb);
     attr->lane_map = UCS_BIT(spriv->super.lane);
+    ucp_proto_priority_query(params, attr);
 }

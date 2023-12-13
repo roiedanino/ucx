@@ -507,6 +507,8 @@ void ucp_proto_select_info_str(ucp_worker_h worker,
         ucp_proto_debug_mem_info_str(strb, select_param->mem_type,
                                      select_param->sys_dev);
     }
+
+    ucs_string_buffer_appendf(strb, ", priority: %u ", select_param->op.priority);
 }
 
 static ucp_proto_perf_node_t *

@@ -2486,11 +2486,15 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     /* Initialize endpoint allocator */
     ucs_strided_alloc_init(&worker->ep_alloc, sizeof(ucp_ep_t), 1);
 
-    worker->user_data    = UCP_PARAM_VALUE(WORKER, params, user_data, USER_DATA,
-                                           NULL);
+    worker->user_data = UCP_PARAM_VALUE(WORKER, params, user_data, USER_DATA,
+                                        NULL);
     worker->am.alignment = UCP_PARAM_VALUE(WORKER, params, am_alignment,
                                            AM_ALIGNMENT, 1);
-    worker->client_id    = UCP_PARAM_VALUE(WORKER, params, client_id, CLIENT_ID, 0);
+    worker->client_id = UCP_PARAM_VALUE(WORKER, params, client_id, CLIENT_ID,
+                                        0);
+    worker->num_priority_levels = UCP_PARAM_VALUE(WORKER, params,
+                                                  required_num_of_priorities,
+                                                  NUM_PRIORITIES, 1);
     if ((params->field_mask & UCP_WORKER_PARAM_FIELD_NAME) &&
         (params->name != NULL)) {
         ucs_snprintf_zero(worker->name, UCP_ENTITY_NAME_MAX, "%s",

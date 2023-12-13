@@ -446,6 +446,8 @@ public:
             request = ucp_stream_send_nbx(ep, buffer, length, param);
             break;
         case UCX_PERF_CMD_AM:
+            param->op_attr_mask |= UCP_OP_ATTR_FIELD_PRIORITY;
+            param->priority = 1;
             request = ucp_am_send_nbx(ep, AM_ID, m_perf.ucp.am_hdr,
                                       m_perf.params.ucp.am_hdr_size, buffer,
                                       length, param);

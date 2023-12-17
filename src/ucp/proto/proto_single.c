@@ -43,7 +43,7 @@ ucp_proto_single_init_priv(const ucp_proto_single_init_params_t *params,
 
     lane_map = UCS_BIT(lane);
 
-    ucp_proto_add_priority_lanes(&params->super, params->tl_cap_flags, params->lane_type, &lane_map);
+    // ucp_proto_add_priority_lanes(&params->super, params->tl_cap_flags, params->lane_type, &lane_map);
 
     reg_md_map = ucp_proto_common_reg_md_map(&params->super, lane_map);
     if (reg_md_map == 0) {
@@ -94,5 +94,5 @@ void ucp_proto_single_query(const ucp_proto_query_params_t *params,
     ucp_proto_default_query(params, attr);
     ucp_proto_common_lane_priv_str(params, &spriv->super, 1, 1, &config_strb);
     attr->lane_map = UCS_BIT(spriv->super.lane);
-    ucp_proto_priority_query(params, attr);
+    // ucp_proto_priority_query(params, attr);
 }

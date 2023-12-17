@@ -41,7 +41,7 @@ ucp_proto_select_thresholds_search(const ucp_proto_select_elem_t *select_elem,
 
     UCS_PP_FOREACH(UCP_PROTO_THRESHOLDS_CHECK, _, 0, 1, 2, 3)
 #undef UCP_PROTO_THRESHOLDS_CHECK
-    return ucp_proto_thresholds_search_slow(thresholds + 4, msg_length);
+        return ucp_proto_thresholds_search_slow(thresholds + 4, msg_length);
 }
 
 static UCS_F_ALWAYS_INLINE const ucp_proto_perf_range_t *
@@ -92,7 +92,7 @@ ucp_proto_select_op_flags(const ucp_proto_select_param_t *select_param)
     return select_param->op_id_flags & ~(UCP_PROTO_SELECT_OP_FLAGS_BASE - 1);
 }
 
-static UCS_F_ALWAYS_INLINE const ucp_proto_threshold_elem_t*
+static UCS_F_ALWAYS_INLINE const ucp_proto_threshold_elem_t *
 ucp_proto_select_lookup(ucp_worker_h worker, ucp_proto_select_t *proto_select,
                         ucp_worker_cfg_index_t ep_cfg_index,
                         ucp_worker_cfg_index_t rkey_cfg_index,
@@ -152,13 +152,13 @@ static UCS_F_ALWAYS_INLINE void ucp_proto_select_param_init_common(
     /* construct a protocol lookup key based on all operation parameters
      * op_flags are modifiers for the operation, for now only FAST_CMPL is
      * supported */
-    select_param->op_id_flags   = op_id | op_flags;
-    select_param->op_attr       = ucp_proto_select_op_attr_pack(op_attr_mask);
-    select_param->dt_class      = dt_class;
-    select_param->mem_type      = mem_info->type;
-    select_param->sys_dev       = mem_info->sys_dev;
-    select_param->sg_count      = sg_count;
-    select_param->op.priority      = priority;
+    select_param->op_id_flags = op_id | op_flags;
+    select_param->op_attr     = ucp_proto_select_op_attr_pack(op_attr_mask);
+    select_param->dt_class    = dt_class;
+    select_param->mem_type    = mem_info->type;
+    select_param->sys_dev     = mem_info->sys_dev;
+    select_param->sg_count    = sg_count;
+    select_param->op.priority = priority;
 }
 
 static UCS_F_ALWAYS_INLINE void
@@ -166,7 +166,7 @@ ucp_proto_select_param_init(ucp_proto_select_param_t *select_param,
                             ucp_operation_id_t op_id, uint32_t op_attr_mask,
                             uint8_t op_flags, ucp_dt_class_t dt_class,
                             const ucp_memory_info_t *mem_info, uint8_t sg_count,
-                            uint16_t priority)
+                            ucp_priority_t priority)
 
 {
     ucp_proto_select_param_init_common(select_param, op_id, op_attr_mask,
@@ -180,7 +180,7 @@ static UCS_F_ALWAYS_INLINE void ucp_proto_select_param_init_reply(
         ucp_proto_select_param_t *select_param, ucp_operation_id_t op_id,
         uint32_t op_attr_mask, uint8_t op_flags, ucp_dt_class_t dt_class,
         const ucp_memory_info_t *mem_info, uint8_t sg_count,
-        const ucp_memory_info_t *reply_mem_info, uint16_t priority)
+        const ucp_memory_info_t *reply_mem_info, ucp_priority_t priority)
 {
     ucp_proto_select_param_init_common(select_param, op_id, op_attr_mask,
                                        op_flags, dt_class, mem_info, sg_count,

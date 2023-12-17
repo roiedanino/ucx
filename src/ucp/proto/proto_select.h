@@ -62,7 +62,7 @@ struct ucp_proto_select_param {
 
         /* Align struct size to uint64_t */
         uint8_t        padding[2];
-        uint16_t       priority;
+        ucp_priority_t priority;
 
     } UCS_S_PACKED op;
 } UCS_S_PACKED;

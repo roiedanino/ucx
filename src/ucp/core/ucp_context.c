@@ -2324,8 +2324,7 @@ ucs_status_t ucp_context_query(ucp_context_h context, ucp_context_attr_t *attr)
         ucs_strncpy_safe(attr->name, context->name, UCP_ENTITY_NAME_MAX);
     }
 
-    /* Currently only Low (0) and High (1) are available */
-    attr->max_message_priorities = 2;
+    attr->max_message_priorities = UCP_MAX_PRIORITIES;
 
     return UCS_OK;
 }

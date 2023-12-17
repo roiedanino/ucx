@@ -282,9 +282,9 @@ ucp_proto_request_send_op(ucp_ep_h ep, ucp_proto_select_t *proto_select,
                           const ucp_request_param_t *param,
                           size_t header_length, uint8_t op_flags)
 {
-    uint16_t priority   = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
-                                    param->priority :
-                                    0;
+    ucp_priority_t priority = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
+                                      param->priority :
+                                      0;
     ucp_worker_h worker = ep->worker;
     ucp_proto_select_param_t sel_param;
     ucs_status_t status;
@@ -321,9 +321,9 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_reply(
 {
     ucp_worker_h worker   = ep->worker;
     ucp_context_h context = worker->context;
-    uint16_t priority     = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
-                                        param->priority :
-                                        0;
+    ucp_priority_t priority = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
+                                      param->priority :
+                                      0;
     ucp_proto_select_param_t sel_param;
     ucp_memory_info_t reply_mem_info;
     ucs_status_t status;

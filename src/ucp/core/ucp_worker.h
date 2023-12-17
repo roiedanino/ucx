@@ -366,7 +366,7 @@ typedef struct ucp_worker {
     } counters;
     
     /* Number of priority levels */
-    uint16_t num_priority_levels;
+    ucp_priority_t num_priority_levels;
 } ucp_worker_t;
 
 

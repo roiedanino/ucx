@@ -583,7 +583,8 @@ ucp_proto_select_get_lane_map(ucp_worker_h worker,
 static void
 ucp_proto_select_wiface_activate(ucp_worker_h worker,
                                  const ucp_proto_select_elem_t *select_elem,
-                                 ucp_worker_cfg_index_t ep_cfg_index)
+                                 ucp_worker_cfg_index_t ep_cfg_index,
+                                 const ucp_proto_select_param_t *select_param)
 {
     ucp_lane_map_t lane_map;
     ucp_ep_config_key_t *ep_config_key;
@@ -644,7 +645,7 @@ ucp_proto_select_elem_init(ucp_worker_h worker, int internal,
         goto out_cleanup_proto_init;
     }
 
-    ucp_proto_select_wiface_activate(worker, select_elem, ep_cfg_index);
+    ucp_proto_select_wiface_activate(worker, select_elem, ep_cfg_index, select_param);
 
     if (!internal) {
         ucp_proto_select_elem_trace(worker, ep_cfg_index, rkey_cfg_index,

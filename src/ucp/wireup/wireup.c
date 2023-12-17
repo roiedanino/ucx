@@ -83,12 +83,12 @@ static ucp_lane_index_t ucp_wireup_get_msg_lane(ucp_ep_h ep, uint8_t msg_type)
     ucp_lane_index_t lane, fallback_lane;
 
     if (msg_type == UCP_WIREUP_MSG_ACK) {
-        lane          = ep_config->key.am_lane;
+        lane          = ep_config->key.am_lanes[0];
         fallback_lane = ep_config->key.wireup_msg_lane;
     } else {
         /* for request/response, try wireup_msg_lane first */
         lane          = ep_config->key.wireup_msg_lane;
-        fallback_lane = ep_config->key.am_lane;
+        fallback_lane = ep_config->key.am_lanes[0];
     }
 
     if (lane == UCP_NULL_LANE) {
@@ -1227,7 +1227,7 @@ static void ucp_wireup_print_config(ucp_worker_h worker,
             "%s: am_lane %s wireup_msg_lane %s cm_lane %s keepalive_lane %s"
             " reachable_mds 0x%" PRIx64,
             title,
-            ucp_wireup_get_lane_index_str(key->am_lane, am_lane_str,
+            ucp_wireup_get_lane_index_str(key->am_lanes[0], am_lane_str,
                                           sizeof(am_lane_str)),
             ucp_wireup_get_lane_index_str(key->wireup_msg_lane,
                                           wireup_msg_lane_str,
@@ -1621,7 +1621,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     }
 
     ep->cfg_index = new_cfg_index;
-    ep->am_lane   = key.am_lane;
+    ep->am_lane   = key.am_lanes[0]; //TODO: ep->am_lane should be an array too
 
     snprintf(str, sizeof(str), "ep %p", ep);
     ucp_wireup_print_config(worker, &ucp_ep_config(ep)->key, str,

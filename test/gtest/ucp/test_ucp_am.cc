@@ -717,7 +717,7 @@ void test_ucp_am_nbx::skip_no_am_lane_caps(uint64_t caps,
                                            const std::string &reason)
 {
     ucp_ep_config_key_t key  = ucp_ep_config(sender().ep())->key;
-    ucp_lane_index_t am_lane = key.am_lane;
+    ucp_lane_index_t am_lane = key.am_lanes[0];
     if (am_lane == UCP_NULL_LANE) {
         UCS_TEST_SKIP_R("am lane is null");
     }

@@ -51,7 +51,7 @@ void ucp_proto_common_lane_priv_init(const ucp_proto_common_init_params_t *param
     md_index     = ucp_proto_common_get_md_index(&params->super, lane);
     dst_md_index = params->super.ep_config_key->lanes[lane].dst_md_index;
 
-    lane_priv->lane = lane;
+    lane_priv->lane     = lane;
 
     /* Local key index */
     if (md_map & UCS_BIT(md_index)) {
@@ -400,6 +400,7 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
     ucp_lane_map_t lane_map;
     char lane_desc[64];
     size_t max_iov;
+    uint32_t priority;
 
     if (max_lanes == 0) {
         return 0;
@@ -432,6 +433,12 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
         ucs_assert(lane < UCP_MAX_LANES);
         rsc_index = ep_config_key->lanes[lane].rsc_index;
         if (rsc_index == UCP_NULL_RESOURCE) {
+            continue;
+        }
+
+        priority = ep_config_key->lanes[lane].priority;
+        ucs_warn("Lane %u priority is: %u", lane, priority);
+        if (priority != select_param->op.priority) {
             continue;
         }
 

@@ -831,6 +831,11 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_common_t, uct_iface_ops_t *tl_ops,
                                                   self->super.super.config.sl :
                                                   rc_config->super.reverse_sl;
 
+    self->super.super.config.priority_sl = (rc_config->super.priority_sl ==
+                                            UCS_ULUNITS_AUTO) ?
+                                                   self->super.super.config.sl :
+                                                   rc_config->super.priority_sl;
+
     if (status != UCS_OK) {
         return status;
     }

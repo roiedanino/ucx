@@ -57,7 +57,6 @@ noinst_HEADERS = \
 	proto/proto_debug.h \
 	proto/proto_multi.h \
 	proto/proto_multi.inl \
-	proto/proto_priority.h \
 	proto/proto_select.h \
 	proto/proto_select.inl \
 	proto/proto_single.h \
@@ -125,7 +124,6 @@ libucp_la_SOURCES = \
 	proto/proto_debug.c \
 	proto/proto_reconfig.c \
 	proto/proto_multi.c \
-	proto/proto_priority.c \
 	proto/proto_select.c \
 	proto/proto_single.c \
 	proto/proto.c \

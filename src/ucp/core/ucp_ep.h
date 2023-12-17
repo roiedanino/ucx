@@ -204,6 +204,7 @@ typedef struct ucp_ep_config_key_lane {
                                         was selected for */
     size_t               seg_size; /* Maximal fragment size which can be
                                       received by the peer */
+    ucp_priority_t       priority;
 } ucp_ep_config_key_lane_t;
 
 
@@ -217,7 +218,7 @@ struct ucp_ep_config_key {
     ucp_lane_index_t         num_lanes;       /* Number of active lanes */
     ucp_ep_config_key_lane_t lanes[UCP_MAX_LANES]; /* Active lanes */
 
-    ucp_lane_index_t         am_lane;         /* Lane for AM (can be NULL) */
+    ucp_lane_index_t         am_lanes[UCP_MAX_PRIORITIES]; /* AM lane for each priority, lowest first  (can be NULL) */
     ucp_lane_index_t         tag_lane;        /* Lane for tag matching offload (can be NULL) */
     ucp_lane_index_t         wireup_msg_lane; /* Lane for wireup messages (can be NULL) */
     ucp_lane_index_t         cm_lane;         /* Lane for holding a CM connection (can be NULL) */

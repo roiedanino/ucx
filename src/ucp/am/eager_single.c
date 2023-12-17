@@ -16,8 +16,6 @@
 #include <ucp/proto/proto_single.h>
 #include <ucp/proto/proto_single.inl>
 
-#include <ucp/proto/proto_priority.h>
-
 
 static UCS_F_ALWAYS_INLINE void
 ucp_am_eager_fill_reply_footer(ucp_am_reply_ftr_t *ftr, ucp_request_t *req)

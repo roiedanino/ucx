@@ -1426,7 +1426,7 @@ struct uct_ep_params {
     /**
      * Message Priority
      */
-    uct_priority_t                     priority;
+    unsigned                                 priority;
 };
 
 

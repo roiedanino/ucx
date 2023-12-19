@@ -437,7 +437,6 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
         }
 
         priority = ep_config_key->lanes[lane].priority;
-        ucs_warn("Lane %u priority is: %u", lane, priority);
         if (priority != select_param->op.priority) {
             continue;
         }

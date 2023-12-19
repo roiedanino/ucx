@@ -205,6 +205,7 @@ struct ucp_request {
                                                       padding */
                             uint16_t       am_id;
                             uint16_t       flags;
+                            ucp_priority_t priority;
                         } am;
                     };
                 } msg_proto;

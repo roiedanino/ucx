@@ -1629,7 +1629,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     }
 
     ep->cfg_index = new_cfg_index;
-    ep->am_lane   = key.am_lanes[0]; //TODO: ep->am_lane should be an array too
+    ep->am_lane   = key.am_lanes[0];
 
     snprintf(str, sizeof(str), "ep %p", ep);
     ucp_wireup_print_config(worker, &ucp_ep_config(ep)->key, str,

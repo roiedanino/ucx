@@ -2149,7 +2149,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
 
         for (priority = 0; priority < num_priorities; ++priority) {
             select_params->priority = priority;
-            ucs_warn("Adding am lanes for priority #%u", priority);
             /* Add AM lane only after RMA/AMO was selected to be aware
              * about whether they need emulation over AM or not */
             status = ucp_wireup_add_am_lane(select_params, &am_info,
@@ -2312,8 +2311,6 @@ ucp_wireup_construct_lanes(const ucp_wireup_select_params_t *select_params,
         key->lanes[lane].seg_size     = select_ctx->lane_descs[lane].seg_size;
         priority                      = select_ctx->lane_descs[lane].priority;
         key->lanes[lane].priority     = priority;
-        ucs_warn("Copying priority %u into ep_config_key",
-                 select_ctx->lane_descs[lane].priority);
         key->lanes[lane].path_index   = ucp_wireup_default_path_index(
                                        select_ctx->lane_descs[lane].path_index);
 

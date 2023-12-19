@@ -54,17 +54,21 @@ ucs_status_t
 ucp_do_am_single(uct_pending_req_t *self, uint8_t am_id,
                  uct_pack_callback_t pack_cb, ssize_t max_packed_size)
 {
-    ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
-    ucp_ep_t *ep       = req->send.ep;
+    ucp_request_t *req      = ucs_container_of(self, ucp_request_t, send.uct);
+    ucp_ep_t *ep            = req->send.ep;
+    ucp_priority_t priority = req->send.msg_proto.am.priority > 0 ? 1 : 0;
     ssize_t packed_len;
     uint64_t *buffer;
+
+    ucs_warn("do_am_single: priority is %u", priority);
 
     /* if packed data can fit short active message, use it, because it should
      * be faster than bcopy.
      */
+
+    req->send.lane = ucp_ep_config(ep)->key.am_lanes[priority];
     if ((max_packed_size <= UCS_ALLOCA_MAX_SIZE) &&
         (max_packed_size <= ucp_ep_config(ep)->am.max_short)) {
-        req->send.lane = ucp_ep_get_am_lane(ep);
         buffer         = ucs_alloca(max_packed_size);
         packed_len     = pack_cb(buffer, req);
         ucs_assertv((packed_len >= 0) && (packed_len <= max_packed_size),

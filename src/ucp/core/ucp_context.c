@@ -2324,7 +2324,9 @@ ucs_status_t ucp_context_query(ucp_context_h context, ucp_context_attr_t *attr)
         ucs_strncpy_safe(attr->name, context->name, UCP_ENTITY_NAME_MAX);
     }
 
-    attr->max_message_priorities = UCP_MAX_PRIORITIES;
+    if (attr->field_mask & UCP_ATTR_FIELD_MAX_PRIORITIES) {
+        attr->max_message_priorities = UCP_MAX_PRIORITIES;
+    }
 
     return UCS_OK;
 }

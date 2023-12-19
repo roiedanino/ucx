@@ -729,6 +729,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
             (lane_desc->priority == priority) &&
             ucp_wireup_path_index_is_equal(lane_desc->path_index,
                                            select_info->path_index)) {
+
             lane = lane_desc - select_ctx->lane_descs;
             ucs_assertv_always(dst_md_index == lane_desc->dst_md_index,
                                "lane[%d].dst_md_index=%d, dst_md_index=%d",
@@ -2136,7 +2137,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
     }
 
     /* Add fast protocols first (so they'll fit in the cached-in part of
-         * ucp_ep. Fast protocols are: RMA/AM/AMO/TAG */
+     * ucp_ep. Fast protocols are: RMA/AM/AMO/TAG */
     status = ucp_wireup_add_rma_lanes(select_params, select_ctx);
     if (status != UCS_OK) {
         return status;
@@ -2150,7 +2151,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
     for (priority = 0; priority < num_priorities; ++priority) {
         select_params->priority = priority;
         /* Add AM lane only after RMA/AMO was selected to be aware
-             * about whether they need emulation over AM or not */
+         * about whether they need emulation over AM or not */
         status = ucp_wireup_add_am_lane(select_params, &am_info, select_ctx);
         if (status != UCS_OK) {
             return status;
@@ -2159,7 +2160,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
 
     for (priority = 0; priority < num_priorities; ++priority) {
         /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
-             * allow exclude AM lane from AM_BW list */
+         * allow exclude AM lane from AM_BW list */
         status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
         if (status != UCS_OK) {
             return status;
@@ -2185,7 +2186,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
 
     /* User should not create endpoints unless requested communication features */
     if (select_params->show_error && (select_ctx->num_lanes == 0)) {
-        ucs_error("No transports selected to %s (features: 0x%" PRIx64 ")",
+        ucs_error("No transports selected to %s (features: 0x%"PRIx64")",
                   select_params->address->name,
                   ucp_ep_get_context_features(select_params->ep));
         return UCS_ERR_UNREACHABLE;

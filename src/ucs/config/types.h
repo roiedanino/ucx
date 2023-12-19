@@ -8,7 +8,6 @@
 #define UCS_CONFIG_TYPES_H
 
 #include <ucs/sys/compiler_def.h>
-#include <stdint.h>
 #include <sys/socket.h>
 
 /**

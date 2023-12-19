@@ -366,7 +366,7 @@ static size_t ucp_wireup_max_lanes(ucp_lane_type_t lane_type)
 {
     return (ucp_wireup_lane_type_is_fast_path(lane_type) ?
                    UCP_MAX_FAST_PATH_LANES :
-                   UCP_MAX_LANES) * 2;
+                   UCP_MAX_LANES) * UCP_MAX_PRIORITIES;
 }
 
 /**
@@ -2130,69 +2130,66 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
 
     ucp_wireup_select_context_init(select_ctx);
 
-        status = ucp_wireup_add_cm_lane(select_params, select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
+    status = ucp_wireup_add_cm_lane(select_params, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-        /* Add fast protocols first (so they'll fit in the cached-in part of
+    /* Add fast protocols first (so they'll fit in the cached-in part of
          * ucp_ep. Fast protocols are: RMA/AM/AMO/TAG */
-        status = ucp_wireup_add_rma_lanes(select_params, select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
+    status = ucp_wireup_add_rma_lanes(select_params, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-        status = ucp_wireup_add_amo_lanes(select_params, select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
+    status = ucp_wireup_add_amo_lanes(select_params, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-        for (priority = 0; priority < num_priorities; ++priority) {
-            select_params->priority = priority;
-            /* Add AM lane only after RMA/AMO was selected to be aware
+    for (priority = 0; priority < num_priorities; ++priority) {
+        select_params->priority = priority;
+        /* Add AM lane only after RMA/AMO was selected to be aware
              * about whether they need emulation over AM or not */
-            status = ucp_wireup_add_am_lane(select_params, &am_info,
-                                            select_ctx);
-            if (status != UCS_OK) {
-                return status;
-            }
-
+        status = ucp_wireup_add_am_lane(select_params, &am_info, select_ctx);
+        if (status != UCS_OK) {
+            return status;
         }
+    }
 
-        for (priority = 0; priority < num_priorities; ++priority) {
-            /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
+    for (priority = 0; priority < num_priorities; ++priority) {
+        /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
              * allow exclude AM lane from AM_BW list */
-            status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
-            if (status != UCS_OK) {
-                return status;
-            }
-        }
-
-        status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
-                                         select_ctx);
+        status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
         if (status != UCS_OK) {
             return status;
         }
+    }
 
-        /* Add slow protocols on the remaining lanes */
-        status = ucp_wireup_add_rma_bw_lanes(select_params, select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
+    status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
+                                     select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-        status = ucp_wireup_add_keepalive_lane(select_params, err_mode,
-                                               select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
+    /* Add slow protocols on the remaining lanes */
+    status = ucp_wireup_add_rma_bw_lanes(select_params, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-        /* User should not create endpoints unless requested communication features */
-        if (select_params->show_error && (select_ctx->num_lanes == 0)) {
-            ucs_error("No transports selected to %s (features: 0x%" PRIx64 ")",
-                      select_params->address->name,
-                      ucp_ep_get_context_features(select_params->ep));
-            return UCS_ERR_UNREACHABLE;
-        }
+    status = ucp_wireup_add_keepalive_lane(select_params, err_mode, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    /* User should not create endpoints unless requested communication features */
+    if (select_params->show_error && (select_ctx->num_lanes == 0)) {
+        ucs_error("No transports selected to %s (features: 0x%" PRIx64 ")",
+                  select_params->address->name,
+                  ucp_ep_get_context_features(select_params->ep));
+        return UCS_ERR_UNREACHABLE;
+    }
 
     return UCS_OK;
 }
@@ -2337,7 +2334,7 @@ ucp_wireup_construct_lanes(const ucp_wireup_select_params_t *select_params,
             key->rma_bw_lanes[lane] = lane;
         }
         if (select_ctx->lane_descs[lane].lane_types & UCS_BIT(UCP_LANE_TYPE_RKEY_PTR)) {
-            ucs_assert(key->rkey_ptr_lane == UCP_NULL_LANE); 
+            ucs_assert(key->rkey_ptr_lane == UCP_NULL_LANE);
             key->rkey_ptr_lane = lane;
         }
         if (select_ctx->lane_descs[lane].lane_types & UCS_BIT(UCP_LANE_TYPE_AMO)) {

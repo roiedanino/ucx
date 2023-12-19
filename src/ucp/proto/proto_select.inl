@@ -41,7 +41,7 @@ ucp_proto_select_thresholds_search(const ucp_proto_select_elem_t *select_elem,
 
     UCS_PP_FOREACH(UCP_PROTO_THRESHOLDS_CHECK, _, 0, 1, 2, 3)
 #undef UCP_PROTO_THRESHOLDS_CHECK
-        return ucp_proto_thresholds_search_slow(thresholds + 4, msg_length);
+    return ucp_proto_thresholds_search_slow(thresholds + 4, msg_length);
 }
 
 static UCS_F_ALWAYS_INLINE const ucp_proto_perf_range_t *
@@ -172,8 +172,6 @@ ucp_proto_select_param_init(ucp_proto_select_param_t *select_param,
     ucp_proto_select_param_init_common(select_param, op_id, op_attr_mask,
                                        op_flags, dt_class, mem_info, sg_count,
                                        priority);
-    // select_param->op.padding[0] = 0;
-    // select_param->op.padding[1] = 0;
 }
 
 static UCS_F_ALWAYS_INLINE void ucp_proto_select_param_init_reply(

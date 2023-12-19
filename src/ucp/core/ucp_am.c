@@ -510,7 +510,6 @@ static ucs_status_t ucp_am_contig_short(uct_pending_req_t *self)
     ucp_ep_t *ep       = req->send.ep;
     ucs_status_t status;
 
-//ucp_ep_get_am_lane(ep);
     req->send.lane = ucp_ep_get_am_lane_by_req(ep, req); 
     status         = ucp_am_send_short(ep, req->send.msg_proto.am.am_id,
                                        req->send.msg_proto.am.flags,

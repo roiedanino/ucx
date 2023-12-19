@@ -81,7 +81,7 @@ ucp_do_am_bcopy_single(uct_pending_req_t *self, uint8_t am_id,
     ucp_dt_state_t state = req->send.state.dt;
     ssize_t packed_len;
 
-    req->send.lane = ucp_ep_get_am_lane_by_req(ep, req);//ucp_ep_get_am_lane(ep);
+    req->send.lane = ucp_ep_get_am_lane_by_req(ep, req);
     packed_len     = uct_ep_am_bcopy(ucp_ep_get_fast_lane(ep, req->send.lane),
                                      am_id, pack_cb, req, 0);
     if (ucs_unlikely(packed_len < 0)) {
@@ -132,7 +132,7 @@ ucs_status_t ucp_do_am_bcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
     ucs_status_t status;
 
     req->send.lane = (!enable_am_bw || (state.offset == 0)) ? /* first part of message must be sent */
-                     ucp_ep_get_am_lane_by_req(ep, req) :                 /* via AM lane */
+                     ucp_ep_get_am_lane_by_req(ep, req) :     /* via AM lane */
                      ucp_send_request_get_am_bw_lane(req);
     uct_ep         = ucp_ep_get_lane(ep, req->send.lane);
 
@@ -420,7 +420,7 @@ ucs_status_t ucp_do_am_zcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
     if (enable_am_bw && (req->send.state.dt.offset != 0)) {
         req->send.lane = ucp_send_request_get_am_bw_lane(req);
     } else {
-        req->send.lane = ucp_ep_get_am_lane_by_req(ep, req); //ucp_ep_get_am_lane(ep);
+        req->send.lane = ucp_ep_get_am_lane_by_req(ep, req);
     }
 
     if (enable_am_bw || (req->send.state.dt.offset == 0)) {

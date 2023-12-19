@@ -60,8 +60,6 @@ ucp_do_am_single(uct_pending_req_t *self, uint8_t am_id,
     ssize_t packed_len;
     uint64_t *buffer;
 
-    ucs_warn("do_am_single: priority is %u", priority);
-
     /* if packed data can fit short active message, use it, because it should
      * be faster than bcopy.
      */

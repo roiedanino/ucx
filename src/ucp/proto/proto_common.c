@@ -51,7 +51,7 @@ void ucp_proto_common_lane_priv_init(const ucp_proto_common_init_params_t *param
     md_index     = ucp_proto_common_get_md_index(&params->super, lane);
     dst_md_index = params->super.ep_config_key->lanes[lane].dst_md_index;
 
-    lane_priv->lane     = lane;
+    lane_priv->lane = lane;
 
     /* Local key index */
     if (md_map & UCS_BIT(md_index)) {

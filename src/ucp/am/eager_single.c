@@ -245,24 +245,13 @@ static ucs_status_t ucp_am_eager_single_bcopy_proto_init_common(
         .lane_type           = UCP_LANE_TYPE_AM,
         .tl_cap_flags        = UCT_IFACE_FLAG_AM_BCOPY
     };
-    // ucp_proto_priority_init_params_t priority_params = {
-    //     .super.super  = *init_params,
-    //     .lane_type    = UCP_LANE_TYPE_AM,
-    //     .tl_cap_flags = UCT_IFACE_FLAG_AM_SHORT
-    // };
-    // ucs_status_t status;
 
     if (!ucp_am_check_init_params(init_params, UCS_BIT(op_id),
                                   UCP_PROTO_SELECT_OP_FLAG_AM_RNDV)) {
         return UCS_ERR_UNSUPPORTED;
     }
 
-    // status = 
     return ucp_proto_single_init(&params);
-    // if (status != UCS_OK) {
-    //     return status;
-    // }
-    // return ucp_proto_priority_init(&priority_params);
 }
 
 static ucs_status_t

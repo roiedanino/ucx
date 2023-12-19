@@ -205,7 +205,6 @@ ucs_config_field_t uct_ib_iface_config_table[] = {
    "High priority service level. 'auto' will set the same value of sl\n",
    ucs_offsetof(uct_ib_iface_config_t, priority_sl), UCS_CONFIG_TYPE_ULUNITS},
 
-
   {NULL}
 };
 

@@ -1037,7 +1037,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_ep_t, const uct_ep_params_t *params)
     /* Need to create QP before super constructor to get QP number */
     uct_rc_mlx5_iface_fill_attr(iface, &attr, iface->super.config.tx_qp_len,
                                 &iface->rx.srq);
- 
     status = uct_rc_mlx5_iface_create_qp(iface, &self->tx.wq.super, &self->tx.wq, &attr);
     if (status != UCS_OK) {
         return status;

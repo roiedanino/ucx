@@ -77,6 +77,7 @@ struct uct_dc_mlx5_ep {
     uct_rc_fc_t           fc;
     uct_dc_mlx5_base_av_t av;
     uint8_t               dci_channel_index;
+    uint8_t               dci_pool_index;
 };
 
 typedef struct {
@@ -90,12 +91,14 @@ typedef struct {
 } uct_dc_mlx5_pending_req_priv_t;
 
 
-UCS_CLASS_DECLARE(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *, const uct_dc_mlx5_iface_addr_t *,
-                  uct_ib_mlx5_base_av_t *, uint8_t);
+UCS_CLASS_DECLARE(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t*,
+                  const uct_dc_mlx5_iface_addr_t*, uct_ib_mlx5_base_av_t*,
+                  uint8_t, const uct_dc_mlx5_dci_config_t*);
 
-UCS_CLASS_DECLARE(uct_dc_mlx5_grh_ep_t, uct_dc_mlx5_iface_t *,
-                  const uct_dc_mlx5_iface_addr_t *,
-                  uct_ib_mlx5_base_av_t *, uint8_t, struct mlx5_grh_av *);
+UCS_CLASS_DECLARE(uct_dc_mlx5_grh_ep_t, uct_dc_mlx5_iface_t*,
+                  const uct_dc_mlx5_iface_addr_t*, uct_ib_mlx5_base_av_t*,
+                  uint8_t, struct mlx5_grh_av*,
+                  const uct_dc_mlx5_dci_config_t*);
 
 UCS_CLASS_DECLARE_DELETE_FUNC(uct_dc_mlx5_ep_t, uct_ep_t);
 
@@ -313,6 +316,23 @@ void uct_dc_mlx5_ep_handle_failure(uct_dc_mlx5_ep_t *ep,
                                    struct mlx5_cqe64 *cqe,
                                    ucs_status_t status);
 
+ucs_status_t
+uct_dc_mlx5_dci_get_or_create(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
+                              const uct_dc_mlx5_dci_config_t *dci_config,
+                              uint8_t *dci_index_p);
+
+static UCS_F_ALWAYS_INLINE void
+uct_dc_mlx5_init_dci_config_key(uct_dc_mlx5_dci_config_t *dci_config,
+                                uint8_t sl, uint8_t port_affinity,
+                                uint8_t path_index, uint8_t is_keepalive)
+{
+    dci_config->key.sl            = sl;
+    dci_config->key.port_affinity = port_affinity;
+    dci_config->key.path_index    = path_index;
+    dci_config->key.is_keepalive  = is_keepalive;
+    memset(dci_config->key.padding, 0, sizeof(dci_config->key.padding));
+}
+
 static UCS_F_ALWAYS_INLINE ucs_status_t
 uct_dc_mlx5_ep_basic_init(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
 {
@@ -339,7 +359,8 @@ uct_dc_mlx5_ep_basic_init(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
 static UCS_F_ALWAYS_INLINE int
 uct_dc_mlx5_iface_dci_can_alloc(uct_dc_mlx5_iface_t *iface, uint8_t pool_index)
 {
-    return iface->tx.dci_pool[pool_index].stack_top < iface->tx.ndci;
+    return (pool_index < iface->tx.num_dci_pools) &&
+           (iface->tx.dci_pool[pool_index].stack_top < iface->tx.ndci);
 }
 
 static UCS_F_ALWAYS_INLINE void

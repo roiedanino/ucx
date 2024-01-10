@@ -162,6 +162,9 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
 {
     uct_dc_mlx5_iface_t *iface = ucs_derived_of(params->iface,
                                                 uct_dc_mlx5_iface_t);
+    uint8_t sl                 = iface->super.super.super.config.sl;
+    uint8_t port_affinity      = iface->tx.port_affinity;
+    uct_dc_mlx5_dci_config_t dci_config;
     const uct_ib_address_t *ib_addr;
     const uct_dc_mlx5_iface_addr_t *if_addr;
     ucs_status_t status;
@@ -177,6 +180,9 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     if_addr    = (const uct_dc_mlx5_iface_addr_t *)params->iface_addr;
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
 
+    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, path_index,
+                                    0);
+
     status = uct_ud_mlx5_iface_get_av(&iface->super.super.super,
                                       &iface->ud_common, ib_addr, path_index,
                                       "DC ep create", &av, &grh_av, &is_global);
@@ -186,10 +192,10 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
 
     if (is_global) {
         return UCS_CLASS_NEW(uct_dc_mlx5_grh_ep_t, ep_p, iface, if_addr, &av,
-                             path_index, &grh_av);
+                             path_index, &grh_av, &dci_config);
     } else {
         return UCS_CLASS_NEW(uct_dc_mlx5_ep_t, ep_p, iface, if_addr, &av,
-                             path_index);
+                             path_index, &dci_config);
     }
 }
 
@@ -357,7 +363,7 @@ static void uct_ib_mlx5dv_dci_qp_init_attr(uct_ib_qp_init_attr_t *qp_attr,
     uct_ib_mlx5dv_dc_qp_init_attr(dv_attr, MLX5DV_DCTYPE_DCI);
 }
 
-static ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
+ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
                                                  uint8_t pool_index,
                                                  uint8_t dci_index,
                                                  uint8_t path_index,
@@ -471,6 +477,7 @@ init_qp:
     }
 
     uct_rc_txqp_available_set(&dci->txqp, dci->txwq.bb_max);
+    ++iface->tx.dci_counter;
 
     return UCS_OK;
 
@@ -761,7 +768,7 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
     ucs_assert(num_dci_pools <= iface->tx.num_dci_pools);
     ucs_assert(num_dcis <= uct_dc_mlx5_iface_total_ndci(iface));
 
-    for (dci_index = 0; dci_index < num_dcis; dci_index++) {
+    for (dci_index = 0; dci_index < iface->tx.dci_counter; dci_index++) {
         uct_rc_txqp_cleanup(&iface->super.super,
                             &iface->tx.dcis[dci_index].txqp);
         uct_ib_mlx5_destroy_qp(md, &iface->tx.dcis[dci_index].txwq.super);
@@ -773,6 +780,8 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
                                     iface->tx.dcis[dci_index].txwq.reg);
     }
 
+    iface->tx.dci_counter = 0;
+
     for (pool_index = 0; pool_index < num_dci_pools; pool_index++) {
         uct_dc_mlx5_iface_dci_pool_destroy(&iface->tx.dci_pool[pool_index]);
     }
@@ -780,60 +789,129 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
     ucs_free(iface->tx.dcis);
 }
 
+ucs_status_t
+uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
+                                  const uct_dc_mlx5_dci_config_t *config,
+                                  uint8_t pool_size, uint8_t *pool_index_p)
+{
+    uint8_t full_handshake = iface->flags &
+                             UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE_FULL_HANDSHAKE;
+    uint8_t num_dcis       = iface->tx.ndci;
+    int pool_index         = iface->tx.num_dci_pools;
+
+    uct_dc_mlx5_dci_pool_t *dci_pool;
+    ucs_status_t status;
+    int i;
+
+    ucs_assert(iface->tx.num_dci_pools < UCT_DC_MLX5_IFACE_MAX_DCI_POOLS);
+    ucs_debug("creating dci pool %u with %u QPs", pool_index, num_dcis);
+    dci_pool        = &iface->tx.dci_pool[pool_index];
+    dci_pool->stack = ucs_calloc(pool_size, sizeof(*dci_pool->stack),
+                                 "dci pool stack");
+    if (dci_pool->stack == NULL) {
+        ucs_error("failed to allocate dci_pool stack");
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    ucs_arbiter_init(&dci_pool->arbiter);
+    dci_pool->stack_top         = 0;
+    dci_pool->release_stack_top = -1;
+
+    for (i = 0; i < pool_size; ++i) {
+        status = uct_dc_mlx5_iface_create_dci(
+                iface, pool_index, iface->tx.dci_counter,
+                config->key.path_index % iface->super.super.super.num_paths,
+                full_handshake);
+        if (status != UCS_OK) {
+            ucs_error("failed to create dci: %d, dci_counter: %u", i,
+                      iface->tx.dci_counter);
+            goto err_pool_destroy;
+        }
+        dci_pool->stack[i] = iface->tx.dci_counter - 1;
+    }
+
+    iface->tx.num_dci_pools++;
+    *pool_index_p = pool_index;
+
+    return UCS_OK;
+
+err_pool_destroy:
+    uct_dc_mlx5_iface_dci_pool_destroy(dci_pool);
+    uct_dc_mlx5_iface_dcis_destroy(iface, pool_index, iface->tx.dci_counter);
+
+    return status;
+}
+
+/**
+ * Checks wether dci pool config present in the dc_config_hash and then either returning
+ * the matching pool index or creating a new one
+*/
+ucs_status_t
+uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
+                                   const uct_dc_mlx5_dci_config_t *dci_config,
+                                   uint8_t *pool_index_p)
+{
+    khiter_t it;
+    ucs_kh_put_t kh_put_ret;
+    ucs_status_t status;
+    uint8_t pool_size;
+
+    it = kh_get(uct_dc_mlx5_config_hash, &iface->dc_config_hash,
+                dci_config->u64);
+    if (it != kh_end(&iface->dc_config_hash)) {
+        *pool_index_p = kh_value(&iface->dc_config_hash, it);
+        return UCS_OK;
+    }
+
+    it = kh_put(uct_dc_mlx5_config_hash, &iface->dc_config_hash,
+                dci_config->u64, &kh_put_ret);
+    if (kh_put_ret == UCS_KH_PUT_FAILED) {
+        ucs_error("failed to kh_put a new dci configuration");
+        return UCS_ERR_EXCEEDS_LIMIT;
+    }
+
+    pool_size = dci_config->key.is_keepalive ? 1 : iface->tx.ndci;
+    status    = uct_dc_mlx5_iface_create_dci_pool(iface, dci_config, pool_size,
+                                                  pool_index_p);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    kh_value(&iface->dc_config_hash, it) = *pool_index_p;
+
+    return UCS_OK;
+}
+
 static ucs_status_t
 uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
                               const uct_dc_mlx5_iface_config_t *config)
 {
-    const uint8_t num_paths = iface->super.super.super.num_paths;
-    uint8_t dci_index       = 0;
-    uct_dc_mlx5_dci_pool_t *dci_pool;
-    uint8_t pool_index, i;
     ucs_status_t status;
+    uct_dc_mlx5_dci_config_t dci_config;
+    uint8_t pool_index;
 
-    iface->tx.dcis = ucs_calloc((iface->tx.ndci * iface->tx.num_dci_pools) +
-                                UCT_DC_MLX5_KEEPALIVE_NUM_DCIS,
-                                sizeof(*iface->tx.dcis),
-                                "dcis");
+    iface->tx.dcis = ucs_calloc(
+            (iface->tx.ndci *
+             UCT_DC_MLX5_IFACE_MAX_DCI_POOLS 
+             ) + UCT_DC_MLX5_KEEPALIVE_NUM_DCIS,
+            sizeof(*iface->tx.dcis), "dcis");
     if (iface->tx.dcis == NULL) {
         status = UCS_ERR_NO_MEMORY;
         goto err;
     }
 
-    for (pool_index = 0; pool_index < iface->tx.num_dci_pools; pool_index++) {
-        ucs_debug("creating dci pool %u with %u QPs", pool_index, iface->tx.ndci);
+    iface->tx.dci_counter = 0;
 
-        dci_pool        = &iface->tx.dci_pool[pool_index];
-        dci_pool->stack = ucs_calloc(iface->tx.ndci, sizeof(*dci_pool->stack),
-                                     "dci pool stack");
-        if (dci_pool->stack == NULL) {
-            status = UCS_ERR_NO_MEMORY;
-            goto err_dcis_destroy;
-        }
-
-        ucs_arbiter_init(&dci_pool->arbiter);
-        dci_pool->stack_top         = 0;
-        dci_pool->release_stack_top = -1;
-
-        for (i = 0; i < iface->tx.ndci; ++i) {
-            status = uct_dc_mlx5_iface_create_dci(
-                    iface, pool_index, dci_index, pool_index % num_paths,
-                    iface->flags & UCT_DC_MLX5_IFACE_FLAG_DCI_FULL_HANDSHAKE);
-            if (status != UCS_OK) {
-                goto err_dci_pool_destroy;
-            }
-
-            dci_pool->stack[i] = dci_index;
-            ++dci_index;
-        }
-    }
+    /* Create a 'default' dci pool to be used when no eps were created */
+    uct_dc_mlx5_init_dci_config_key(&dci_config,
+                                    iface->super.super.super.config.sl,
+                                    iface->tx.port_affinity, 0, 0);
+    uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
 
     iface->tx.bb_max = iface->tx.dcis[0].txwq.bb_max;
+
     return UCS_OK;
 
-err_dci_pool_destroy:
-    uct_dc_mlx5_iface_dci_pool_destroy(dci_pool);
-err_dcis_destroy:
-    uct_dc_mlx5_iface_dcis_destroy(iface, pool_index, dci_index);
 err:
     return status;
 }
@@ -1522,12 +1600,13 @@ static UCS_CLASS_INIT_FUNC(uct_dc_mlx5_iface_t, uct_md_h tl_md, uct_worker_h wor
     self->tx.fc_hard_req_resend_time       = ucs_get_time();
     self->tx.fc_hard_req_progress_cb_id    = UCS_CALLBACKQ_ID_NULL;
     self->keepalive_dci                    = -1;
-    self->tx.num_dci_pools                 = 1;
+    self->tx.num_dci_pools                 = 0;
     self->super.super.config.tx_moderation = 0; /* disable tx moderation for dcs */
     self->flags                            = 0;
     self->tx.av_fl_mlid                    = self->super.super.super.path_bits[0] & 0x7f;
 
     kh_init_inplace(uct_dc_mlx5_fc_hash, &self->tx.fc_hash);
+    kh_init_inplace(uct_dc_mlx5_config_hash, &self->dc_config_hash);
 
     self->tx.rand_seed = config->rand_seed ? config->rand_seed : time(NULL);
     self->tx.pend_cb   = uct_dc_mlx5_iface_is_dci_shared(self) ?
@@ -1551,18 +1630,17 @@ static UCS_CLASS_INIT_FUNC(uct_dc_mlx5_iface_t, uct_md_h tl_md, uct_worker_h wor
 
     self->tx.dci_pool_release_bitmap = 0;
 
+    self->tx.num_dci_pools = 0;
     if (ucs_test_all_flags(md->flags, UCT_IB_MLX5_MD_FLAG_DEVX_DCI |
                                       UCT_IB_MLX5_MD_FLAG_CQE_V1)) {
         self->flags           |= UCT_DC_MLX5_IFACE_FLAG_UIDX;
-        self->tx.num_dci_pools = self->super.super.super.num_paths;
     }
 
     if ((params->field_mask & UCT_IFACE_PARAM_FIELD_FEATURES) &&
         !(params->features & UCT_IFACE_FEATURE_PUT)) {
         self->flags |= UCT_DC_MLX5_IFACE_FLAG_DISABLE_PUT;
     }
-
-    max_dcis = ucs_min(INT8_MAX, UINT8_MAX / self->tx.num_dci_pools);
+    max_dcis = ucs_min(INT8_MAX, UINT8_MAX / UCT_DC_MLX5_IFACE_MAX_DCI_POOLS);
     if ((self->tx.ndci < 1) || (self->tx.ndci > max_dcis)) {
         ucs_error("dc interface must have 1..%d dcis (requested: %u)", max_dcis,
                   self->tx.ndci);
@@ -1646,6 +1724,7 @@ static UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_iface_t)
 
     uct_dc_mlx5_destroy_dct(self);
     kh_destroy_inplace(uct_dc_mlx5_fc_hash, &self->tx.fc_hash);
+    kh_destroy_inplace(uct_dc_mlx5_config_hash, &self->dc_config_hash);
     uct_dc_mlx5_iface_cleanup_fc_ep(self);
     ucs_callbackq_remove_oneshot(&worker->progress_q, self,
                                  uct_dc_mlx5_ep_dci_release_remove_filter,
@@ -1724,24 +1803,21 @@ reset_dci:
 
 ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
 {
-    int full_handshake = iface->flags &
-                         UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE_FULL_HANDSHAKE;
-    ucs_status_t status;
-    uint8_t dci_index;
+    uint8_t sl, port_affinity, pool_index;
+    uct_dc_mlx5_dci_config_t dci_config;
 
     if (ucs_likely(iface->flags & UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE)) {
         return UCS_OK;
     }
 
-    dci_index = uct_dc_mlx5_iface_total_ndci(iface);
-    status    = uct_dc_mlx5_iface_create_dci(iface, 0, dci_index, 0,
-                                             full_handshake);
-    if (status != UCS_OK) {
-        return status;
-    }
+    sl             = iface->super.super.super.config.sl;
+    port_affinity  = iface->tx.port_affinity;
+
+    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0, 1);
+    uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
 
     iface->flags        |= UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE;
-    iface->keepalive_dci = dci_index;
+    iface->keepalive_dci = iface->tx.dci_counter - 1;
     return UCS_OK;
 }
 

@@ -272,6 +272,20 @@ typedef struct {
 } uct_dc_mlx5_dci_pool_t;
 
 
+typedef union uct_dc_mlx5_dci_config {
+    struct {
+        uint8_t port_affinity;
+        uint8_t sl;
+        uint8_t path_index;
+        uint8_t is_keepalive;
+        uint8_t padding[4];
+    } key;
+    uint64_t u64;
+} uct_dc_mlx5_dci_config_t;
+
+KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
+
+
 struct uct_dc_mlx5_iface {
     uct_rc_mlx5_iface_common_t    super;
     struct {
@@ -320,6 +334,8 @@ struct uct_dc_mlx5_iface {
         uint8_t                   av_fl_mlid;
 
         uint8_t                   num_dci_channels;
+
+        uint8_t                   dci_counter;
     } tx;
 
     struct {
@@ -327,6 +343,8 @@ struct uct_dc_mlx5_iface {
 
         uint8_t                   port_affinity;
     } rx;
+
+    khash_t(uct_dc_mlx5_config_hash) dc_config_hash;
 
     uint8_t                       version_flag;
 
@@ -377,6 +395,21 @@ void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
 
 void uct_dc_mlx5_iface_reset_dci(uct_dc_mlx5_iface_t *iface, uint8_t dci_index);
 
+ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
+                                          uint8_t pool_index, uint8_t dci_index,
+                                          uint8_t path_index,
+                                          int full_handshake);
+
+ucs_status_t
+uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
+                                  const uct_dc_mlx5_dci_config_t *config,
+                                  uint8_t pool_size, uint8_t *pool_index_p);
+
+ucs_status_t
+uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
+                                   const uct_dc_mlx5_dci_config_t *dci_config,
+                                   uint8_t *pool_index_p);
+
 #if HAVE_DEVX
 
 ucs_status_t uct_dc_mlx5_iface_devx_create_dct(uct_dc_mlx5_iface_t *iface);
@@ -422,9 +455,7 @@ uct_dc_mlx5_iface_fill_ravh(struct ibv_ravh *ravh, uint32_t dct_num)
 static UCS_F_ALWAYS_INLINE uint8_t
 uct_dc_mlx5_iface_total_ndci(uct_dc_mlx5_iface_t *iface)
 {
-    return (iface->tx.ndci * iface->tx.num_dci_pools) +
-        ((iface->flags & UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE) ?
-         UCT_DC_MLX5_KEEPALIVE_NUM_DCIS : 0);
+    return iface->tx.dci_counter;
 }
 
 /* TODO:

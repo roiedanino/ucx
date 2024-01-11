@@ -282,6 +282,9 @@ ucp_proto_request_send_op(ucp_ep_h ep, ucp_proto_select_t *proto_select,
                           const ucp_request_param_t *param,
                           size_t header_length, uint8_t op_flags)
 {
+    ucp_priority_t priority = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
+                                      param->priority :
+                                      0;
     ucp_worker_h worker = ep->worker;
     ucp_proto_select_param_t sel_param;
     ucs_status_t status;
@@ -300,7 +303,8 @@ ucp_proto_request_send_op(ucp_ep_h ep, ucp_proto_select_t *proto_select,
 
     ucp_proto_select_param_init(&sel_param, op_id, param->op_attr_mask,
                                 op_flags, req->send.state.dt_iter.dt_class,
-                                &req->send.state.dt_iter.mem_info, sg_count);
+                                &req->send.state.dt_iter.mem_info, sg_count,
+                                priority);
 
     msg_length = req->send.state.dt_iter.length + header_length;
     return ucp_proto_request_send_op_common(worker, ep, proto_select,
@@ -317,6 +321,9 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_reply(
 {
     ucp_worker_h worker   = ep->worker;
     ucp_context_h context = worker->context;
+    ucp_priority_t priority = param->op_attr_mask & UCP_OP_ATTR_FIELD_PRIORITY ?
+                                      param->priority :
+                                      0;
     ucp_proto_select_param_t sel_param;
     ucp_memory_info_t reply_mem_info;
     ucs_status_t status;
@@ -338,7 +345,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_reply(
     ucp_proto_select_param_init_reply(&sel_param, op_id, param->op_attr_mask, 0,
                                       req->send.state.dt_iter.dt_class,
                                       &req->send.state.dt_iter.mem_info,
-                                      sg_count, &reply_mem_info);
+                                      sg_count, &reply_mem_info, priority);
 
     return ucp_proto_request_send_op_common(worker, ep, proto_select,
                                             rkey_cfg_index, req, param,

@@ -255,7 +255,7 @@ ucp_proto_rndv_ctrl_init_priv(const ucp_proto_rndv_ctrl_init_params_t *params,
         mem_info.sys_dev = select_param->sys_dev;
         ucp_proto_select_param_init(&remote_select_param, params->remote_op_id,
                                     op_attr_mask, 0, select_param->dt_class,
-                                    &mem_info, select_param->sg_count);
+                                    &mem_info, select_param->sg_count, 0);
     } else {
         /* If we know the remote buffer parameters, these are actually the local
          * parameters for the remote protocol
@@ -264,7 +264,7 @@ ucp_proto_rndv_ctrl_init_priv(const ucp_proto_rndv_ctrl_init_params_t *params,
         mem_info.type    = init_params->rkey_config_key->mem_type;
         ucp_proto_select_param_init(&remote_select_param, params->remote_op_id,
                                     op_attr_mask, 0, UCP_DATATYPE_CONTIG,
-                                    &mem_info, 1);
+                                    &mem_info, 1, 0);
         /* Use only memory domains for which the unpacking of the remote key was
          * successful
          */
@@ -706,7 +706,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_proto_rndv_send_reply,
 
     ucp_proto_select_param_init(&sel_param, op_id, op_attr_mask, 0,
                                 req->send.state.dt_iter.dt_class,
-                                &req->send.state.dt_iter.mem_info, sg_count);
+                                &req->send.state.dt_iter.mem_info, sg_count, 0);
 
     status = UCS_PROFILE_CALL(ucp_proto_request_lookup_proto, worker, ep, req,
                               proto_select, rkey_cfg_index, &sel_param, length);

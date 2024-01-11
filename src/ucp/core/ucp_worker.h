@@ -364,6 +364,9 @@ typedef struct ucp_worker {
         /* Number of failed endpoints */
         uint64_t                     ep_failures;
     } counters;
+    
+    /* Number of priority levels */
+    ucp_priority_t num_priority_levels;
 } ucp_worker_t;
 
 

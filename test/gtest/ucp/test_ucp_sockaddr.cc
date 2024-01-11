@@ -1392,8 +1392,8 @@ UCS_TEST_SKIP_COND_P(test_ucp_sockaddr_wireup, compare_cm_and_wireup_configs,
     EXPECT_NE(cm_ep_cfg_index, wireup_ep_cfg_index);
 
     /* compare AM lanes */
-    cmp_cfg_lanes(cm_ep_cfg_key, cm_ep_cfg_key->am_lane,
-                  wireup_ep_cfg_key, wireup_ep_cfg_key->am_lane);
+    cmp_cfg_lanes(cm_ep_cfg_key, cm_ep_cfg_key->am_lanes[0],
+                  wireup_ep_cfg_key, wireup_ep_cfg_key->am_lanes[0]);
 
     /* compare TAG lanes */
     cmp_cfg_lanes(cm_ep_cfg_key, cm_ep_cfg_key->tag_lane,

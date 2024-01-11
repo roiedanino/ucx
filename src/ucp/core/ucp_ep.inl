@@ -59,6 +59,12 @@ static inline ucp_lane_index_t ucp_ep_get_am_lane(ucp_ep_h ep)
     return ep->am_lane;
 }
 
+static inline ucp_lane_index_t ucp_ep_get_am_lane_by_req(ucp_ep_h ep, const ucp_request_t *req)
+{
+    ucp_priority_t priority = req->send.msg_proto.am.priority;
+    return ucp_ep_config(ep)->key.am_lanes[priority];
+}
+
 static inline ucp_lane_index_t ucp_ep_get_wireup_msg_lane(ucp_ep_h ep)
 {
     ucp_lane_index_t lane = ucp_ep_config(ep)->key.wireup_msg_lane;

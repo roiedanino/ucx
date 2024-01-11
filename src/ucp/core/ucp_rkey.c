@@ -1134,8 +1134,8 @@ void ucp_rkey_resolve_inner(ucp_rkey_h rkey, ucp_ep_h ep)
     /* If we use sw rma/amo need to resolve destination endpoint in order to
      * receive responses and completion messages
      */
-    if ((amo_sw || rma_sw) && (config->key.am_lane != UCP_NULL_LANE)) {
-        status = ucp_ep_resolve_remote_id(ep, config->key.am_lane);
+    if ((amo_sw || rma_sw) && (config->key.am_lanes[0] != UCP_NULL_LANE)) {
+        status = ucp_ep_resolve_remote_id(ep, config->key.am_lanes[0]);
         if (status != UCS_OK) {
             ucs_debug("ep %p: failed to resolve destination ep, "
                       "sw rma cannot be used", ep);
@@ -1144,10 +1144,10 @@ void ucp_rkey_resolve_inner(ucp_rkey_h rkey, ucp_ep_h ep)
              * as the rma/amo lane in the rkey cache
              */
             if (amo_sw) {
-                rkey->cache.amo_lane = config->key.am_lane;
+                rkey->cache.amo_lane = config->key.am_lanes[0];
             }
             if (rma_sw) {
-                rkey->cache.rma_lane = config->key.am_lane;
+                rkey->cache.rma_lane = config->key.am_lanes[0];
             }
         }
     }

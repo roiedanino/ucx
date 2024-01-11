@@ -48,6 +48,9 @@ UCP_UINT_TYPE(UCP_MD_INDEX_BITS)     ucp_md_map_t;
 typedef uint8_t                      ucp_lane_index_t;
 UCP_UINT_TYPE(UCP_MAX_LANES)         ucp_lane_map_t;
 
+/* Message Priority */
+#define UCP_MAX_PRIORITIES 2     /* Currently only Low (0) and High (1) are available */
+typedef uint8_t ucp_priority_t;
 
 /* System devices */
 #define UCP_MAX_SYS_DEVICES          64

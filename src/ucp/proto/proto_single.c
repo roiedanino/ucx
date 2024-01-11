@@ -28,6 +28,7 @@ ucp_proto_single_init_priv(const ucp_proto_single_init_params_t *params,
     ucp_md_map_t reg_md_map;
     ucp_lane_index_t lane;
     ucs_status_t status;
+    ucp_lane_map_t lane_map;
 
     num_lanes = ucp_proto_common_find_lanes(&params->super, params->lane_type,
                                             params->tl_cap_flags, 1,
@@ -39,7 +40,9 @@ ucp_proto_single_init_priv(const ucp_proto_single_init_params_t *params,
 
     ucs_assert(num_lanes == 1);
 
-    reg_md_map = ucp_proto_common_reg_md_map(&params->super, UCS_BIT(lane));
+    lane_map = UCS_BIT(lane);
+
+    reg_md_map = ucp_proto_common_reg_md_map(&params->super, lane_map);
     if (reg_md_map == 0) {
         spriv->reg_md = UCP_NULL_RESOURCE;
     } else {

@@ -510,7 +510,7 @@ static ucs_status_t ucp_am_contig_short(uct_pending_req_t *self)
     ucp_ep_t *ep       = req->send.ep;
     ucs_status_t status;
 
-    req->send.lane = ucp_ep_get_am_lane(ep);
+    req->send.lane = ucp_ep_get_am_lane_by_req(ep, req); 
     status         = ucp_am_send_short(ep, req->send.msg_proto.am.am_id,
                                        req->send.msg_proto.am.flags,
                                        req->send.msg_proto.am.header.ptr,
@@ -526,7 +526,7 @@ static ucs_status_t ucp_am_contig_short_reply(uct_pending_req_t *self)
     ucp_ep_t *ep       = req->send.ep;
     ucs_status_t status;
 
-    req->send.lane = ucp_ep_get_am_lane(ep);
+    req->send.lane = ucp_ep_get_am_lane_by_req(ep, req);
     status         = ucp_am_send_short(ep, req->send.msg_proto.am.am_id,
                                        req->send.msg_proto.am.flags,
                                        req->send.msg_proto.am.header.ptr,
@@ -1021,6 +1021,9 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_send_nbx,
         req->send.msg_proto.am.header.ptr      = (void*)header;
         req->send.msg_proto.am.header.reg_desc = NULL;
         req->send.msg_proto.am.header.length   = header_length;
+        req->send.msg_proto.am.priority        = (param->op_attr_mask &
+                                                  UCP_OP_ATTR_FIELD_PRIORITY) ?
+                param->priority: 0;
         ret = ucp_proto_request_send_op(ep, &ucp_ep_config(ep)->proto_select,
                                         UCP_WORKER_CFG_INDEX_NULL, req, op_id,
                                         buffer, count, datatype, contig_length,

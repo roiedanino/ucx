@@ -83,12 +83,12 @@ static ucp_lane_index_t ucp_wireup_get_msg_lane(ucp_ep_h ep, uint8_t msg_type)
     ucp_lane_index_t lane, fallback_lane;
 
     if (msg_type == UCP_WIREUP_MSG_ACK) {
-        lane          = ep_config->key.am_lane;
+        lane          = ep_config->key.am_lanes[0];
         fallback_lane = ep_config->key.wireup_msg_lane;
     } else {
         /* for request/response, try wireup_msg_lane first */
         lane          = ep_config->key.wireup_msg_lane;
-        fallback_lane = ep_config->key.am_lane;
+        fallback_lane = ep_config->key.am_lanes[0];
     }
 
     if (lane == UCP_NULL_LANE) {
@@ -1040,7 +1040,8 @@ static ucs_status_t
 ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
                                  unsigned path_index,
                                  ucp_worker_iface_t *wiface,
-                                 const ucp_address_entry_t *address)
+                                 const ucp_address_entry_t *address,
+                                 ucp_priority_t priority)
 {
     uct_ep_h uct_ep = ucp_ep_get_lane(ep, lane);
     uct_ep_params_t uct_ep_params;
@@ -1058,11 +1059,14 @@ ucp_wireup_connect_lane_to_iface(ucp_ep_h ep, ucp_lane_index_t lane,
     uct_ep_params.field_mask = UCT_EP_PARAM_FIELD_IFACE      |
                                UCT_EP_PARAM_FIELD_DEV_ADDR   |
                                UCT_EP_PARAM_FIELD_IFACE_ADDR |
+                               UCT_EP_PARAM_FIELD_PRIORITY   |
                                UCT_EP_PARAM_FIELD_PATH_INDEX;
     uct_ep_params.iface      = wiface->iface;
     uct_ep_params.dev_addr   = address->dev_addr;
     uct_ep_params.iface_addr = address->iface_addr;
     uct_ep_params.path_index = path_index;
+    uct_ep_params.priority   = priority;
+    ucs_warn("PRIORITY: %u", priority);
     status = uct_ep_create(&uct_ep_params, &uct_ep);
     if (status != UCS_OK) {
         /* coverity[leaked_storage] */
@@ -1117,7 +1121,8 @@ ucp_wireup_connect_lane_to_ep(ucp_ep_h ep, unsigned ep_init_flags,
                               ucp_lane_index_t lane, unsigned path_index,
                               ucp_rsc_index_t rsc_index,
                               ucp_worker_iface_t *wiface,
-                              const ucp_unpacked_address_t *remote_address)
+                              const ucp_unpacked_address_t *remote_address,
+                              ucp_priority_t priority)
 {
     int connect_aux;
     uct_ep_h uct_ep;
@@ -1141,9 +1146,10 @@ ucp_wireup_connect_lane_to_ep(ucp_ep_h ep, unsigned ep_init_flags,
               lane, uct_ep, remote_address);
     connect_aux = !ucp_ep_init_flags_has_cm(ep_init_flags) &&
                   (lane == ucp_ep_get_wireup_msg_lane(ep));
+    priority    = ucp_ep_config(ep)->key.lanes[lane].priority;
     status      = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane), ep_init_flags,
                                         rsc_index, path_index, connect_aux,
-                                        remote_address);
+                                        remote_address, priority);
     if (status != UCS_OK) {
         return status;
     }
@@ -1165,6 +1171,7 @@ ucp_wireup_connect_lane(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_rsc_index_t rsc_index;
     ucp_worker_iface_t *wiface;
     ucp_address_entry_t *address;
+    ucp_priority_t priority;
 
     ucs_trace("ep %p: connect lane[%d]", ep, lane);
 
@@ -1176,6 +1183,7 @@ ucp_wireup_connect_lane(ucp_ep_h ep, unsigned ep_init_flags,
 
     rsc_index  = ucp_ep_get_rsc_index(ep, lane);
     wiface     = ucp_worker_iface(worker, rsc_index);
+    priority   = ucp_ep_config(ep)->key.lanes[lane].priority;
 
     /*
      * create a wireup endpoint which will start connection establishment
@@ -1184,11 +1192,11 @@ ucp_wireup_connect_lane(ucp_ep_h ep, unsigned ep_init_flags,
     if (ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane)) {
         return ucp_wireup_connect_lane_to_ep(ep, ep_init_flags, lane,
                                              path_index, rsc_index, wiface,
-                                             remote_address);
+                                             remote_address, priority);
     } else if (ucp_worker_is_tl_2iface(worker, rsc_index)) {
         address = &remote_address->address_list[addr_index];
         return ucp_wireup_connect_lane_to_iface(ep, lane, path_index, wiface,
-                                                address);
+                                                address, priority);
     } else {
         return UCS_ERR_UNREACHABLE;
     }
@@ -1227,7 +1235,7 @@ static void ucp_wireup_print_config(ucp_worker_h worker,
             "%s: am_lane %s wireup_msg_lane %s cm_lane %s keepalive_lane %s"
             " reachable_mds 0x%" PRIx64,
             title,
-            ucp_wireup_get_lane_index_str(key->am_lane, am_lane_str,
+            ucp_wireup_get_lane_index_str(key->am_lanes[0], am_lane_str,
                                           sizeof(am_lane_str)),
             ucp_wireup_get_lane_index_str(key->wireup_msg_lane,
                                           wireup_msg_lane_str,
@@ -1621,7 +1629,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     }
 
     ep->cfg_index = new_cfg_index;
-    ep->am_lane   = key.am_lane;
+    ep->am_lane   = key.am_lanes[0];
 
     snprintf(str, sizeof(str), "ep %p", ep);
     ucp_wireup_print_config(worker, &ucp_ep_config(ep)->key, str,

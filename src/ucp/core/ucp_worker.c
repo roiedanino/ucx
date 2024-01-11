@@ -1809,68 +1809,76 @@ ucp_worker_print_used_tls(ucp_worker_h worker, ucp_worker_cfg_index_t cfg_index)
     int amo_emul                    = 0;
     int num_valid_lanes             = 0;
     ucp_lane_index_t lane;
+    ucp_priority_t priority;
 
     ucp_ep_config_name(worker, cfg_index, &strb);
 
-    for (lane = 0; lane < key->num_lanes; ++lane) {
-        if (key->lanes[lane].rsc_index == UCP_NULL_RESOURCE) {
-            continue;
-        }
+    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+        for (lane = 0; lane < key->num_lanes; ++lane) {
+            if (key->lanes[lane].rsc_index == UCP_NULL_RESOURCE) {
+                continue;
+            }
 
-        if (key->am_lane == lane) {
-            ++num_valid_lanes;
-        }
+            if (key->am_lanes[priority] == lane) {
+                ++num_valid_lanes;
+            }
 
-        if ((key->am_lane == lane) || (key->rkey_ptr_lane == lane) ||
-            (ucp_ep_config_get_multi_lane_prio(key->am_bw_lanes, lane) >= 0)  ||
-            (ucp_ep_config_get_multi_lane_prio(key->rma_bw_lanes, lane) >= 0)) {
-            if (context->config.features & UCP_FEATURE_TAG) {
+            if ((key->am_lanes[priority] == lane) || (key->rkey_ptr_lane == lane) ||
+                (ucp_ep_config_get_multi_lane_prio(key->am_bw_lanes, lane) >=
+                 0) ||
+                (ucp_ep_config_get_multi_lane_prio(key->rma_bw_lanes, lane) >=
+                 0)) {
+                if (context->config.features & UCP_FEATURE_TAG) {
+                    tag_lanes_map |= UCS_BIT(lane);
+                }
+
+                if (context->config.features & UCP_FEATURE_AM) {
+                    am_lanes_map |= UCS_BIT(lane);
+                }
+            }
+
+            if (key->tag_lane == lane) {
+                /* tag_lane is initialized if TAG feature is requested */
+                ucs_assert(context->config.features & UCP_FEATURE_TAG);
                 tag_lanes_map |= UCS_BIT(lane);
             }
 
-            if (context->config.features & UCP_FEATURE_AM) {
-                am_lanes_map |= UCS_BIT(lane);
+            if ((key->am_lanes[priority] == lane) &&
+                (context->config.features & UCP_FEATURE_STREAM)) {
+                stream_lanes_map |= UCS_BIT(lane);
+            }
+
+            if (key->keepalive_lane == lane) {
+                ka_lanes_map |= UCS_BIT(lane);
+            }
+
+            if ((ucp_ep_config_get_multi_lane_prio(key->rma_lanes, lane) >=
+                 0)) {
+                rma_lanes_map |= UCS_BIT(lane);
+            }
+
+            if ((ucp_ep_config_get_multi_lane_prio(key->amo_lanes, lane) >=
+                 0)) {
+                amo_lanes_map |= UCS_BIT(lane);
             }
         }
 
-        if (key->tag_lane == lane) {
-            /* tag_lane is initialized if TAG feature is requested */
-            ucs_assert(context->config.features & UCP_FEATURE_TAG);
-            tag_lanes_map |= UCS_BIT(lane);
+        if (num_valid_lanes == 0) {
+            return;
         }
 
-        if ((key->am_lane == lane) &&
-            (context->config.features & UCP_FEATURE_STREAM)) {
-            stream_lanes_map |= UCS_BIT(lane);
+        if ((context->config.features & UCP_FEATURE_RMA) &&
+            (rma_lanes_map == 0)) {
+            ucs_assert(key->am_lanes[priority] != UCP_NULL_LANE);
+            rma_lanes_map |= UCS_BIT(key->am_lanes[priority]);
+            rma_emul       = 1;
         }
 
-        if (key->keepalive_lane == lane) {
-            ka_lanes_map |= UCS_BIT(lane);
+        if ((context->config.features & UCP_FEATURE_AMO) &&
+            (amo_lanes_map == 0) && (key->am_lanes[priority] != UCP_NULL_LANE)) {
+            amo_lanes_map |= UCS_BIT(key->am_lanes[priority]);
+            amo_emul       = 1;
         }
-
-        if ((ucp_ep_config_get_multi_lane_prio(key->rma_lanes, lane) >= 0)) {
-            rma_lanes_map |= UCS_BIT(lane);
-        }
-
-        if ((ucp_ep_config_get_multi_lane_prio(key->amo_lanes, lane) >= 0)) {
-            amo_lanes_map |= UCS_BIT(lane);
-        }
-    }
-
-    if (num_valid_lanes == 0) {
-        return;
-    }
-
-    if ((context->config.features & UCP_FEATURE_RMA) && (rma_lanes_map == 0)) {
-        ucs_assert(key->am_lane != UCP_NULL_LANE);
-        rma_lanes_map |= UCS_BIT(key->am_lane);
-        rma_emul       = 1;
-    }
-
-    if ((context->config.features & UCP_FEATURE_AMO) && (amo_lanes_map == 0) &&
-        (key->am_lane != UCP_NULL_LANE)) {
-        amo_lanes_map |= UCS_BIT(key->am_lane);
-        amo_emul       = 1;
     }
 
     ucp_worker_add_feature_rsc(context, key, tag_lanes_map, "tag", &strb);
@@ -2147,7 +2155,7 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
         } else {
             tag_proto_flags = UCP_PROTO_FLAG_AM_SHORT;
             tag_max_short   = &ep_config->tag.max_eager_short;
-            tag_exp_lane    = key->am_lane;
+            tag_exp_lane    = key->am_lanes[0];
         }
 
         ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
@@ -2157,7 +2165,7 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
 
         ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
                                         UCP_FEATURE_AM, UCP_OP_ID_AM_SEND,
-                                        UCP_PROTO_FLAG_AM_SHORT, key->am_lane,
+                                        UCP_PROTO_FLAG_AM_SHORT, key->am_lanes[0],
                                         &ep_config->am_u.max_eager_short);
     }
 
@@ -2421,6 +2429,7 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     unsigned name_length;
     ucp_worker_h worker;
     ucs_status_t status;
+    ucp_priority_t required_num_of_priorities;
 
     worker = ucs_calloc(1, sizeof(*worker), "ucp worker");
     if (worker == NULL) {
@@ -2486,11 +2495,24 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     /* Initialize endpoint allocator */
     ucs_strided_alloc_init(&worker->ep_alloc, sizeof(ucp_ep_t), 1);
 
-    worker->user_data    = UCP_PARAM_VALUE(WORKER, params, user_data, USER_DATA,
-                                           NULL);
+    worker->user_data = UCP_PARAM_VALUE(WORKER, params, user_data, USER_DATA,
+                                        NULL);
     worker->am.alignment = UCP_PARAM_VALUE(WORKER, params, am_alignment,
                                            AM_ALIGNMENT, 1);
-    worker->client_id    = UCP_PARAM_VALUE(WORKER, params, client_id, CLIENT_ID, 0);
+    worker->client_id = UCP_PARAM_VALUE(WORKER, params, client_id, CLIENT_ID,
+                                        0);
+    required_num_of_priorities = UCP_PARAM_VALUE(WORKER, params,
+                                                 required_num_of_priorities,
+                                                 NUM_PRIORITIES, 1);
+    if (required_num_of_priorities > UCP_MAX_PRIORITIES) {
+        ucs_error("Required invalid number of priorities: %u, max number of "
+                  "priorities: %u",
+                  required_num_of_priorities, UCP_MAX_PRIORITIES);
+        status = UCS_ERR_INVALID_PARAM;
+        goto err_free;
+    }
+    worker->num_priority_levels = required_num_of_priorities;
+
     if ((params->field_mask & UCP_WORKER_PARAM_FIELD_NAME) &&
         (params->name != NULL)) {
         ucs_snprintf_zero(worker->name, UCP_ENTITY_NAME_MAX, "%s",

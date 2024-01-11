@@ -60,7 +60,7 @@ static ucs_status_t ucp_proto_reconfig_progress(uct_pending_req_t *self)
     }
 
     /* TODO select wireup lane when needed */
-    req->send.lane = ucp_ep_config(ep)->key.am_lane;
+    req->send.lane = ucp_ep_config(ep)->key.am_lanes[0];
     return UCS_ERR_NO_RESOURCE;
 }
 

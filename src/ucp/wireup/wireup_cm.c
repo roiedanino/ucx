@@ -397,6 +397,7 @@ static ucs_status_t ucp_cm_ep_init_lanes(ucp_ep_h ep,
     ucp_rsc_index_t rsc_idx;
     uint8_t path_index;
     uct_ep_h uct_ep;
+    ucp_priority_t priority;
 
     UCS_BITMAP_CLEAR(tl_bitmap);
     for (lane_idx = 0; lane_idx < ucp_ep_num_lanes(ep); ++lane_idx) {
@@ -419,8 +420,10 @@ static ucs_status_t ucp_cm_ep_init_lanes(ucp_ep_h ep,
         UCS_BITMAP_SET(*tl_bitmap, rsc_idx);
         if (ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane_idx)) {
             path_index = ucp_ep_get_path_index(ep, lane_idx);
+            priority   = ucp_ep_config(ep)->key.lanes[lane_idx].priority;
             status     = ucp_wireup_ep_connect(ucp_ep_get_lane(ep, lane_idx), 0,
-                                               rsc_idx, path_index, 0, NULL);
+                                               rsc_idx, path_index, 0, NULL,
+                                               priority);
             if (status != UCS_OK) {
                 goto out;
             }
@@ -510,7 +513,7 @@ static unsigned ucp_cm_client_uct_connect_progress(void *arg)
             goto err;
         }
 
-        ep->am_lane = key.am_lane;
+        ep->am_lane = key.am_lanes[0];
 
         status = ucp_cm_ep_init_lanes(ep, &tl_bitmap);
         if (status != UCS_OK) {

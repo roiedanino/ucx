@@ -759,8 +759,7 @@ typedef struct ucp_ep_params {
      * This setting is optional. To enable it, the corresponding - @ref
      * UCP_EP_PARAM_FIELD_LOCAL_SOCK_ADDR bit in the field mask must be set.
      */
-    ucs_sock_addr_t         local_sockaddr;
-
+    ucs_sock_addr_t         local_sockaddr;    
 } ucp_ep_params_t;
 
 

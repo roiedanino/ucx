@@ -410,6 +410,7 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
     ucp_lane_map_t lane_map;
     char lane_desc[64];
     size_t max_iov;
+    uint32_t priority;
 
     if (max_lanes == 0) {
         return 0;
@@ -442,6 +443,11 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
         ucs_assert(lane < UCP_MAX_LANES);
         rsc_index = ep_config_key->lanes[lane].rsc_index;
         if (rsc_index == UCP_NULL_RESOURCE) {
+            continue;
+        }
+
+        priority = ep_config_key->lanes[lane].priority;
+        if (priority != select_param->op.priority) {
             continue;
         }
 

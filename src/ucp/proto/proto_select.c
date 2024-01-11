@@ -583,7 +583,8 @@ ucp_proto_select_get_lane_map(ucp_worker_h worker,
 static void
 ucp_proto_select_wiface_activate(ucp_worker_h worker,
                                  const ucp_proto_select_elem_t *select_elem,
-                                 ucp_worker_cfg_index_t ep_cfg_index)
+                                 ucp_worker_cfg_index_t ep_cfg_index,
+                                 const ucp_proto_select_param_t *select_param)
 {
     ucp_lane_map_t lane_map;
     ucp_ep_config_key_t *ep_config_key;
@@ -644,7 +645,7 @@ ucp_proto_select_elem_init(ucp_worker_h worker, int internal,
         goto out_cleanup_proto_init;
     }
 
-    ucp_proto_select_wiface_activate(worker, select_elem, ep_cfg_index);
+    ucp_proto_select_wiface_activate(worker, select_elem, ep_cfg_index, select_param);
 
     if (!internal) {
         ucp_proto_select_elem_trace(worker, ep_cfg_index, rkey_cfg_index,
@@ -774,6 +775,7 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
     ucp_memory_info_t mem_info;
     ssize_t max_short_signed;
     const uint32_t *op_attribute;
+    uint32_t priority;
 
     ucp_memory_info_set_host(&mem_info);
 
@@ -783,50 +785,52 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
      * can be used only if the message size fits this minimal threshold.
      */
     ucs_log_indent(1);
-    ucs_carray_for_each(op_attribute, op_attributes,
-                        ucs_static_array_size(op_attributes)) {
-        ucp_proto_select_param_init(&select_param, op_id, *op_attribute, 0,
-                                    UCP_DATATYPE_CONTIG, &mem_info, 1);
-        thresh = ucp_proto_select_lookup(worker, proto_select, ep_cfg_index,
-                                         rkey_cfg_index, &select_param, 0);
-        if (thresh == NULL) {
-            /* no protocol for contig/host */
-            goto out_disable;
-        }
-
-        ucs_assert(thresh->proto_config.proto != NULL);
-        if (!ucs_test_all_flags(thresh->proto_config.proto->flags,
-                                proto_flags)) {
-            /* the protocol for smallest messages is not short */
-            goto out_disable;
-        }
-
-        /* If max_msg_length exceeds SSIZE_MAX, use SSIZE_MAX, since short
-           protocol thresholds are signed values */
-        max_short_signed = ucs_min(thresh->max_msg_length, SSIZE_MAX);
-
-        ucs_trace("found short protocol %s max_msg_length %zu",
-                  thresh->proto_config.proto->name, thresh->max_msg_length);
-
-        /* Assume short protocol uses 'ucp_proto_single_priv_t' */
-        spriv = thresh->proto_config.priv;
-
-        if (proto == NULL) {
-            proto                            = thresh->proto_config.proto;
-            proto_short->max_length_host_mem = max_short_signed;
-            proto_short->lane                = spriv->super.lane;
-            proto_short->rkey_index          = spriv->super.rkey_index;
-        } else {
-            if ((proto != thresh->proto_config.proto) ||
-                (proto_short->lane != spriv->super.lane) ||
-                (proto_short->rkey_index != spriv->super.rkey_index)) {
-                /* not all op_attr options have same configuration */
+    for(priority = 0; priority < worker->num_priority_levels ; ++priority) {
+        ucs_carray_for_each(op_attribute, op_attributes,
+                            ucs_static_array_size(op_attributes)) {
+            ucp_proto_select_param_init(&select_param, op_id, *op_attribute, 0,
+                                        UCP_DATATYPE_CONTIG, &mem_info, 1, priority);
+            thresh = ucp_proto_select_lookup(worker, proto_select, ep_cfg_index,
+                                             rkey_cfg_index, &select_param, 0);
+            if (thresh == NULL) {
+                /* no protocol for contig/host */
                 goto out_disable;
             }
 
-            /* Fast-path threshold is the minimal of all op_attr options */
-            proto_short->max_length_host_mem =
-                    ucs_min(proto_short->max_length_host_mem, max_short_signed);
+            ucs_assert(thresh->proto_config.proto != NULL);
+            if (!ucs_test_all_flags(thresh->proto_config.proto->flags,
+                                    proto_flags)) {
+                /* the protocol for smallest messages is not short */
+                goto out_disable;
+            }
+
+            /* If max_msg_length exceeds SSIZE_MAX, use SSIZE_MAX, since short
+           protocol thresholds are signed values */
+            max_short_signed = ucs_min(thresh->max_msg_length, SSIZE_MAX);
+
+            ucs_trace("found short protocol %s max_msg_length %zu",
+                      thresh->proto_config.proto->name, thresh->max_msg_length);
+
+            /* Assume short protocol uses 'ucp_proto_single_priv_t' */
+            spriv = thresh->proto_config.priv;
+
+            if (proto == NULL) {
+                proto                            = thresh->proto_config.proto;
+                proto_short->max_length_host_mem = max_short_signed;
+                proto_short->lane                = spriv->super.lane;
+                proto_short->rkey_index          = spriv->super.rkey_index;
+            } else {
+                if ((proto != thresh->proto_config.proto) ||
+                    (proto_short->lane != spriv->super.lane) ||
+                    (proto_short->rkey_index != spriv->super.rkey_index)) {
+                    /* not all op_attr options have same configuration */
+                    goto out_disable;
+                }
+
+                /* Fast-path threshold is the minimal of all op_attr options */
+                proto_short->max_length_host_mem = ucs_min(
+                        proto_short->max_length_host_mem, max_short_signed);
+            }
         }
     }
 

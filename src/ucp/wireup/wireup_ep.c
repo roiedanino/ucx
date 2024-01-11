@@ -456,7 +456,8 @@ ucp_rsc_index_t ucp_wireup_ep_get_aux_rsc_index(uct_ep_h uct_ep)
 ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
                                    ucp_rsc_index_t rsc_index,
                                    unsigned path_index, int connect_aux,
-                                   const ucp_unpacked_address_t *remote_address)
+                                   const ucp_unpacked_address_t *remote_address,
+                                   ucp_priority_t priority)
 {
     ucp_wireup_ep_t *wireup_ep     = ucp_wireup_ep(uct_ep);
     ucp_ep_h ucp_ep                = wireup_ep->super.ucp_ep;
@@ -468,9 +469,11 @@ ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
     ucs_assert(wireup_ep != NULL);
 
     uct_ep_params.field_mask = UCT_EP_PARAM_FIELD_IFACE |
+                               UCT_EP_PARAM_FIELD_PRIORITY |
                                UCT_EP_PARAM_FIELD_PATH_INDEX;
     uct_ep_params.path_index = path_index;
     uct_ep_params.iface      = ucp_worker_iface(worker, rsc_index)->iface;
+    uct_ep_params.priority   = priority;
     status = uct_ep_create(&uct_ep_params, &next_ep);
     if (status != UCS_OK) {
         /* make Coverity happy */

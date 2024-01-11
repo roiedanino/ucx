@@ -147,6 +147,7 @@ int ucp_is_uct_ep_failed(uct_ep_h uct_ep)
 void ucp_ep_config_key_reset(ucp_ep_config_key_t *key)
 {
     ucp_lane_index_t i;
+    ucp_priority_t priority;
 
     memset(key, 0, sizeof(*key));
     key->num_lanes        = 0;
@@ -158,7 +159,9 @@ void ucp_ep_config_key_reset(ucp_ep_config_key_t *key)
         key->lanes[i].lane_types   = 0;
         key->lanes[i].seg_size     = 0;
     }
-    key->am_lane          = UCP_NULL_LANE;
+    for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
+        key->am_lanes[priority] = UCP_NULL_LANE;
+    }
     key->wireup_msg_lane  = UCP_NULL_LANE;
     key->cm_lane          = UCP_NULL_LANE;
     key->keepalive_lane   = UCP_NULL_LANE;
@@ -768,6 +771,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_ep_config_key_t key;
     uct_ep_h uct_ep;
     ucs_status_t status;
+    ucp_priority_t priority;
 
     ucs_assert(ep_init_flags & UCP_EP_INIT_CM_WIREUP_CLIENT);
     ucs_assert(ucp_worker_num_cm_cmpts(ep->worker) != 0);
@@ -779,7 +783,10 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     key.num_lanes = 1;
     /* all operations will use the first lane, which is a stub endpoint before
      * reconfiguration */
-    key.am_lane = 0;
+    for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
+        key.am_lanes[priority] = 0;
+    }
+
     if (ucp_ep_init_flags_has_cm(ep_init_flags)) {
         key.cm_lane = 0;
         /* Send keepalive on wireup_ep (which will send on aux_ep) */
@@ -796,7 +803,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
         return status;
     }
 
-    ep->am_lane = key.am_lane;
+    ep->am_lane = key.am_lanes[0];
     if (!ucp_ep_has_cm_lane(ep)) {
         ucp_ep_update_flags(ep, UCP_EP_FLAG_CONNECT_REQ_QUEUED, 0);
     }
@@ -1887,7 +1894,8 @@ int ucp_ep_config_is_equal(const ucp_ep_config_key_t *key1,
         (key1->rma_bw_md_map != key2->rma_bw_md_map) ||
         (key1->rma_md_map != key2->rma_md_map) ||
         (key1->reachable_md_map != key2->reachable_md_map) ||
-        (key1->am_lane != key2->am_lane) ||
+        (key1->am_lanes[0] != key2->am_lanes[0]) ||
+        (key1->am_lanes[1] != key2->am_lanes[1]) ||
         (key1->tag_lane != key2->tag_lane) ||
         (key1->wireup_msg_lane != key2->wireup_msg_lane) ||
         (key1->cm_lane != key2->cm_lane) ||
@@ -2179,9 +2187,13 @@ ucp_ep_config_set_am_rndv_thresh(ucp_worker_h worker,
     ucp_context_h context = worker->context;
     size_t rndv_thresh, rndv_local_thresh, min_thresh;
     ucs_status_t status;
+    int priority;
 
-    ucs_assert(config->key.am_lane != UCP_NULL_LANE);
-    ucs_assert(config->key.lanes[config->key.am_lane].rsc_index != UCP_NULL_RESOURCE);
+    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+        ucs_assert(config->key.am_lanes[priority] != UCP_NULL_LANE);
+        ucs_assert(config->key.lanes[config->key.am_lanes[priority]].rsc_index !=
+                   UCP_NULL_RESOURCE);
+    }
 
     if (context->config.ext.rndv_thresh == UCS_MEMUNITS_AUTO) {
         /* auto - Make UCX calculate the AM rndv threshold on its own.*/
@@ -2711,7 +2723,7 @@ ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
                                sizeof(ucp_tag_offload_unexp_rndv_hdr_t));
 
             /* Must have active messages for using rendezvous */
-            if (config->key.am_lane != UCP_NULL_LANE) {
+            if (config->key.am_lanes[0] != UCP_NULL_LANE) {
                 tag_lanes[0] = lane;
                 ucp_ep_config_set_rndv_thresh(worker, config, tag_lanes,
                                               min_rndv_thresh, max_rndv_thresh,
@@ -2740,8 +2752,8 @@ ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
     }
 
     /* Configuration for active messages */
-    if (config->key.am_lane != UCP_NULL_LANE) {
-        lane        = config->key.am_lane;
+    if (config->key.am_lanes[0] != UCP_NULL_LANE) {
+        lane        = config->key.am_lanes[0];
         rsc_index   = config->key.lanes[lane].rsc_index;
         if (rsc_index != UCP_NULL_RESOURCE) {
             iface_attr = ucp_worker_iface_get_attr(worker, rsc_index);
@@ -3058,6 +3070,7 @@ void ucp_ep_config_lane_info_str(ucp_worker_h worker,
     ucp_md_index_t dst_md_index;
     ucp_md_index_t md_index;
     ucp_rsc_index_t cmpt_index;
+    ucp_priority_t priority;
     unsigned path_index;
     int prio;
 
@@ -3094,8 +3107,10 @@ void ucp_ep_config_lane_info_str(ucp_worker_h worker,
         ucs_string_buffer_appendf(strbuf, " amo#%d", prio);
     }
 
-    if (key->am_lane == lane) {
-        ucs_string_buffer_appendf(strbuf, " am");
+    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+        if (key->am_lanes[priority] == lane) {
+            ucs_string_buffer_appendf(strbuf, " am");
+        }
     }
 
     if (key->rkey_ptr_lane == lane) {

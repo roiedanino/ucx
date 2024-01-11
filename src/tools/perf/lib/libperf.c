@@ -1777,8 +1777,10 @@ static ucs_status_t ucp_perf_setup(ucx_perf_context_t *perf)
         goto err_free_mem;
     }
 
-    worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE |
+                                UCP_WORKER_PARAM_FIELD_NUM_PRIORITIES;
     worker_params.thread_mode = perf->params.thread_mode;
+    worker_params.required_num_of_priorities = 2;
 
     for (i = 0; i < thread_count; i++) {
         perf->ucp.tctx[i].tid              = i;

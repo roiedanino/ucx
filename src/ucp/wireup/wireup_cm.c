@@ -507,7 +507,7 @@ static unsigned ucp_cm_client_uct_connect_progress(void *arg)
         ucp_wireup_cm_ep_cleanup(ep);
         ucp_ep_realloc_lanes(ep, key.num_lanes);
 
-        status = ucp_worker_get_ep_config(worker, &key, ep_init_flags,
+        status = ucp_worker_get_ep_config(ep, &key, ep_init_flags,
                                           &ep->cfg_index);
         if (status != UCS_OK) {
             goto err;

@@ -783,7 +783,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     key.num_lanes = 1;
     /* all operations will use the first lane, which is a stub endpoint before
      * reconfiguration */
-    for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
+    for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
         key.am_lanes[priority] = 0;
     }
 
@@ -797,7 +797,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
         key.wireup_msg_lane = 0;
     }
 
-    status = ucp_worker_get_ep_config(ep->worker, &key, ep_init_flags,
+    status = ucp_worker_get_ep_config(ep, &key, ep_init_flags,
                                       &ep->cfg_index);
     if (status != UCS_OK) {
         return status;
@@ -1187,7 +1187,9 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
                            ucp_ep_h *ep_p)
 {
     ucp_ep_h ep    = NULL;
-    unsigned flags = UCP_PARAM_VALUE(EP, params, flags, FLAGS, 0);
+    unsigned flags          = UCP_PARAM_VALUE(EP, params, flags, FLAGS, 0);
+    unsigned num_priorities = UCP_PARAM_VALUE(EP, params, num_priorities,
+                                              NUM_PRIORITIES, 1);
     ucs_status_t status;
 
     UCS_ASYNC_BLOCK(&worker->async);
@@ -1201,6 +1203,14 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
     } else {
         status = UCS_ERR_INVALID_PARAM;
     }
+
+    if (num_priorities > UCP_MAX_PRIORITIES) {
+        ucs_error("Required invalid number of priorities: %u, max number of "
+                  "priorities: %u",
+                  num_priorities, UCP_MAX_PRIORITIES);
+        return UCS_ERR_INVALID_PARAM;
+    }
+    ep->ext->num_priorities = num_priorities;
 
     if (status == UCS_OK) {
 #if ENABLE_DEBUG_DATA
@@ -2177,19 +2187,19 @@ static void ucp_ep_config_init_short_thresh(ucp_memtype_thresh_t *thresh)
 }
 
 static ucs_status_t
-ucp_ep_config_set_am_rndv_thresh(ucp_worker_h worker,
-                                 uct_iface_attr_t *iface_attr,
+ucp_ep_config_set_am_rndv_thresh(ucp_ep_h ep, uct_iface_attr_t *iface_attr,
                                  uct_md_attr_v2_t *md_attr,
                                  ucp_ep_config_t *config,
                                  size_t min_rndv_thresh, size_t max_rndv_thresh,
                                  ucp_rndv_thresh_t *thresh)
 {
+    ucp_worker_h worker   = ep->worker;
     ucp_context_h context = worker->context;
     size_t rndv_thresh, rndv_local_thresh, min_thresh;
     ucs_status_t status;
     int priority;
 
-    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+    for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
         ucs_assert(config->key.am_lanes[priority] != UCP_NULL_LANE);
         ucs_assert(config->key.lanes[config->key.am_lanes[priority]].rsc_index !=
                    UCP_NULL_RESOURCE);
@@ -2483,9 +2493,10 @@ out:
     return UCS_OK;
 }
 
-ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
+ucs_status_t ucp_ep_config_init(ucp_ep_h ep, ucp_ep_config_t *config,
                                 const ucp_ep_config_key_t *key)
 {
+    ucp_worker_h worker                = ep->worker;
     ucp_context_h context              = worker->context;
     ucp_lane_index_t tag_lanes[2]      = {UCP_NULL_LANE, UCP_NULL_LANE};
     ucp_lane_index_t rkey_ptr_lanes[2] = {UCP_NULL_LANE, UCP_NULL_LANE};
@@ -2730,7 +2741,7 @@ ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
                                               &config->tag.rndv.rma_thresh);
 
                 md_attr = &context->tl_mds[config->md_index[lane]].attr;
-                status = ucp_ep_config_set_am_rndv_thresh(worker, iface_attr,
+                status = ucp_ep_config_set_am_rndv_thresh(ep, iface_attr,
                         md_attr, config, min_am_rndv_thresh,
                         max_am_rndv_thresh, &config->tag.rndv.am_thresh);
                 if (status != UCS_OK) {
@@ -2791,8 +2802,9 @@ ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
                                               &config->rndv.rma_thresh);
             }
 
-            status = ucp_ep_config_set_am_rndv_thresh(worker, iface_attr,
-                    md_attr, config, iface_attr->cap.am.min_zcopy, SIZE_MAX,
+            status = ucp_ep_config_set_am_rndv_thresh(
+                    ep, iface_attr, md_attr, config,
+                    iface_attr->cap.am.min_zcopy, SIZE_MAX,
                     &config->rndv.am_thresh);
             if (status != UCS_OK) {
                 goto err_free_dst_mds;
@@ -3057,13 +3069,14 @@ void ucp_ep_config_cm_lane_info_str(ucp_worker_h worker,
                               "<unknown>");
 }
 
-void ucp_ep_config_lane_info_str(ucp_worker_h worker,
+void ucp_ep_config_lane_info_str(const ucp_ep_h ep,
                                  const ucp_ep_config_key_t *key,
                                  const unsigned *addr_indices,
                                  ucp_lane_index_t lane,
                                  ucp_rsc_index_t aux_rsc_index,
                                  ucs_string_buffer_t *strbuf)
 {
+    ucp_worker_h worker   = ep->worker;
     ucp_context_h context = worker->context;
     uct_tl_resource_desc_t *rsc;
     ucp_rsc_index_t rsc_index;
@@ -3107,7 +3120,7 @@ void ucp_ep_config_lane_info_str(ucp_worker_h worker,
         ucs_string_buffer_appendf(strbuf, " amo#%d", prio);
     }
 
-    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+    for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
         if (key->am_lanes[priority] == lane) {
             ucs_string_buffer_appendf(strbuf, " am");
         }
@@ -3156,8 +3169,8 @@ static void ucp_ep_config_print(FILE *stream, ucp_worker_h worker,
             ucp_ep_config_cm_lane_info_str(worker, &config->key, lane, cm_idx,
                                            &strb);
         } else {
-            ucp_ep_config_lane_info_str(worker, &config->key, addr_indices,
-                                        lane, aux_rsc_index, &strb);
+            ucp_ep_config_lane_info_str(ep, &config->key, addr_indices, lane,
+                                        aux_rsc_index, &strb);
         }
         fprintf(stream, "#                 %s\n", ucs_string_buffer_cstr(&strb));
     }

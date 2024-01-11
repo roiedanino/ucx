@@ -785,7 +785,7 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
      * can be used only if the message size fits this minimal threshold.
      */
     ucs_log_indent(1);
-    for(priority = 0; priority < worker->num_priority_levels ; ++priority) {
+    for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
         ucs_carray_for_each(op_attribute, op_attributes,
                             ucs_static_array_size(op_attributes)) {
             ucp_proto_select_param_init(&select_param, op_id, *op_attribute, 0,

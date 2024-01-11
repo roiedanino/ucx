@@ -2431,7 +2431,7 @@ ucp_wireup_select_lanes(ucp_ep_h ep, unsigned ep_init_flags,
         ucp_wireup_select_params_init(&select_params, ep, ep_init_flags,
                                       remote_address, scalable_tl_bitmap, 0);
         status = ucp_wireup_search_lanes(&select_params, key->err_mode,
-                                         &select_ctx, worker->num_priority_levels);
+                                         &select_ctx, ep->ext->num_priorities);
         if (status == UCS_OK) {
             goto out;
         }
@@ -2444,7 +2444,7 @@ ucp_wireup_select_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_wireup_select_params_init(&select_params, ep, ep_init_flags,
                                   remote_address, tl_bitmap, show_error);
     status = ucp_wireup_search_lanes(&select_params, key->err_mode,
-                                     &select_ctx, worker->num_priority_levels);
+                                     &select_ctx, ep->ext->num_priorities);
     if (status != UCS_OK) {
         return status;
     }

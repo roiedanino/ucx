@@ -28,10 +28,10 @@ KHASH_IMPL(ucp_worker_rkey_config, ucp_rkey_config_key_t,
  * @param [in]  key             Rkey configuration key.
  * @param [out] cfg_index_p     Filled with configuration index in the worker.
  */
-static UCS_F_ALWAYS_INLINE ucs_status_t ucp_worker_rkey_config_get(
-        ucp_worker_h worker, const ucp_rkey_config_key_t *key,
-        const ucs_sys_dev_distance_t *lanes_distance,
-        ucp_worker_cfg_index_t *cfg_index_p)
+static UCS_F_ALWAYS_INLINE ucs_status_t
+ucp_worker_rkey_config_get(ucp_worker_h worker, const ucp_rkey_config_key_t *key,
+                           const ucs_sys_dev_distance_t *lanes_distance,
+                           ucp_worker_cfg_index_t *cfg_index_p)
 {
     khiter_t khiter = kh_get(ucp_worker_rkey_config, &worker->rkey_config_hash,
                              *key);

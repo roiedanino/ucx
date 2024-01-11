@@ -1793,8 +1793,9 @@ static void ucp_worker_add_feature_rsc(ucp_context_h context,
 }
 
 static void
-ucp_worker_print_used_tls(ucp_worker_h worker, ucp_worker_cfg_index_t cfg_index)
+ucp_worker_print_used_tls(ucp_ep_h ep, ucp_worker_cfg_index_t cfg_index)
 {
+    ucp_worker_h worker            = ep->worker;
     const ucp_ep_config_key_t *key = &ucs_array_elem(&worker->ep_config,
                                                      cfg_index).key;
     ucp_context_h context          = worker->context;
@@ -1813,7 +1814,7 @@ ucp_worker_print_used_tls(ucp_worker_h worker, ucp_worker_cfg_index_t cfg_index)
 
     ucp_ep_config_name(worker, cfg_index, &strb);
 
-    for (priority = 0; priority < worker->num_priority_levels; ++priority) {
+    for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
         for (lane = 0; lane < key->num_lanes; ++lane) {
             if (key->lanes[lane].rsc_index == UCP_NULL_RESOURCE) {
                 continue;
@@ -2047,9 +2048,9 @@ ucp_worker_ep_config_short_init(ucp_worker_h worker, ucp_ep_config_t *ep_config,
     ucp_proto_select_short_t proto_short;
 
     if (worker->context->config.features & feature_flag) {
-        ucp_proto_select_short_init(worker, &ep_config->proto_select,
-                                    ep_cfg_index, UCP_WORKER_CFG_INDEX_NULL,
-                                    op_id, proto_flags, &proto_short);
+        ucp_proto_select_short_init(worker, &ep_config->proto_select, ep_cfg_index,
+                                    UCP_WORKER_CFG_INDEX_NULL, op_id,
+                                    proto_flags, &proto_short);
 
         /* Short protocol should be either disabled, or use expected lane */
         ucs_assertv((proto_short.max_length_host_mem < 0) ||
@@ -2087,11 +2088,12 @@ ucp_worker_ep_config_filter(const ucs_callbackq_elem_t *elem, void *arg)
  * A 'key' identifies an entry in the ep_config array. An entry holds the key and
  * additional configuration parameters and thresholds.
  */
-ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
+ucs_status_t ucp_worker_get_ep_config(ucp_ep_h ep,
                                       const ucp_ep_config_key_t *key,
                                       unsigned ep_init_flags,
                                       ucp_worker_cfg_index_t *cfg_index_p)
 {
+    ucp_worker_h worker   = ep->worker;
     ucp_context_h context = worker->context;
     ucp_worker_cfg_index_t ep_cfg_index;
     ucp_ep_config_t *ep_config;
@@ -2133,7 +2135,7 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
                                   ucp_worker_ep_config_free_cb, old_ep_cfg_buf);
     }
 
-    status = ucp_ep_config_init(worker, ep_config, key);
+    status = ucp_ep_config_init(ep, ep_config, key);
     if (status != UCS_OK) {
         return status;
     }
@@ -2165,11 +2167,12 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
 
         ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
                                         UCP_FEATURE_AM, UCP_OP_ID_AM_SEND,
-                                        UCP_PROTO_FLAG_AM_SHORT, key->am_lanes[0],
+                                        UCP_PROTO_FLAG_AM_SHORT,
+                                        key->am_lanes[0],
                                         &ep_config->am_u.max_eager_short);
     }
 
-    ucp_worker_print_used_tls(worker, ep_cfg_index);
+    ucp_worker_print_used_tls(ep, ep_cfg_index);
 
 out:
     *cfg_index_p = ep_cfg_index;
@@ -2429,7 +2432,6 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     unsigned name_length;
     ucp_worker_h worker;
     ucs_status_t status;
-    ucp_priority_t required_num_of_priorities;
 
     worker = ucs_calloc(1, sizeof(*worker), "ucp worker");
     if (worker == NULL) {
@@ -2501,17 +2503,6 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
                                            AM_ALIGNMENT, 1);
     worker->client_id = UCP_PARAM_VALUE(WORKER, params, client_id, CLIENT_ID,
                                         0);
-    required_num_of_priorities = UCP_PARAM_VALUE(WORKER, params,
-                                                 required_num_of_priorities,
-                                                 NUM_PRIORITIES, 1);
-    if (required_num_of_priorities > UCP_MAX_PRIORITIES) {
-        ucs_error("Required invalid number of priorities: %u, max number of "
-                  "priorities: %u",
-                  required_num_of_priorities, UCP_MAX_PRIORITIES);
-        status = UCS_ERR_INVALID_PARAM;
-        goto err_free;
-    }
-    worker->num_priority_levels = required_num_of_priorities;
 
     if ((params->field_mask & UCP_WORKER_PARAM_FIELD_NAME) &&
         (params->name != NULL)) {
@@ -2983,6 +2974,10 @@ ucs_status_t ucp_worker_query(ucp_worker_h worker,
 
     if (attr->field_mask & UCP_WORKER_ATTR_FIELD_MAX_INFO_STRING) {
         attr->max_debug_string = UCP_WORKER_MAX_DEBUG_STRING_SIZE;
+    }
+
+    if (attr->field_mask & UCP_WORKER_ATTR_FIELD_MAX_PRIORITIES) {
+        attr->max_priorities = UCP_MAX_PRIORITIES;
     }
 
     return status;

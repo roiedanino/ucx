@@ -99,7 +99,7 @@ ucp_request_str(ucp_request_t *req, ucp_worker_h worker,
         if (recurse) {
             ep     = req->send.ep;
             config = ucp_ep_config(ep);
-            ucp_ep_config_lane_info_str(worker, &config->key, NULL,
+            ucp_ep_config_lane_info_str(ep, &config->key, NULL,
                                         req->send.lane, UCP_NULL_RESOURCE,
                                         strb);
         }

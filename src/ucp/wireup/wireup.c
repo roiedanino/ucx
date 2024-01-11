@@ -1214,13 +1214,14 @@ ucp_wireup_get_lane_index_str(ucp_lane_index_t lane, char *buf, size_t max)
     return buf;
 }
 
-static void ucp_wireup_print_config(ucp_worker_h worker,
+static void ucp_wireup_print_config(ucp_ep_h ep,
                                     const ucp_ep_config_key_t *key,
                                     const char *title,
                                     const unsigned *addr_indices,
                                     ucp_rsc_index_t cm_index,
                                     ucs_log_level_t log_level)
 {
+    ucp_worker_h worker = ep->worker;
     char am_lane_str[8];
     char wireup_msg_lane_str[8];
     char cm_lane_str[8];
@@ -1251,7 +1252,7 @@ static void ucp_wireup_print_config(ucp_worker_h worker,
         if (lane == key->cm_lane) {
             ucp_ep_config_cm_lane_info_str(worker, key, lane, cm_index, &strb);
         } else {
-            ucp_ep_config_lane_info_str(worker, key, addr_indices, lane,
+            ucp_ep_config_lane_info_str(ep, key, addr_indices, lane,
                                         UCP_NULL_RESOURCE, &strb);
         }
         ucs_log(log_level, "%s: %s", title, ucs_string_buffer_cstr(&strb));
@@ -1588,7 +1589,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_wireup_get_reachable_mds(ep, ep_init_flags, remote_address, &key);
 
     /* Load new configuration */
-    status = ucp_worker_get_ep_config(worker, &key, ep_init_flags,
+    status = ucp_worker_get_ep_config(ep, &key, ep_init_flags,
                                       &new_cfg_index);
     if (status != UCS_OK) {
         goto out;
@@ -1621,9 +1622,9 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
          */
         ucs_debug("cannot reconfigure ep %p from [%d] to [%d]", ep, ep->cfg_index,
                   new_cfg_index);
-        ucp_wireup_print_config(worker, &ucp_ep_config(ep)->key, "old",
+        ucp_wireup_print_config(ep, &ucp_ep_config(ep)->key, "old",
                                 NULL, cm_idx, UCS_LOG_LEVEL_ERROR);
-        ucp_wireup_print_config(worker, &key, "new", NULL,
+        ucp_wireup_print_config(ep, &key, "new", NULL,
                                 cm_idx, UCS_LOG_LEVEL_ERROR);
         ucs_fatal("endpoint reconfiguration not supported yet");
     }
@@ -1632,7 +1633,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
     ep->am_lane   = key.am_lanes[0];
 
     snprintf(str, sizeof(str), "ep %p", ep);
-    ucp_wireup_print_config(worker, &ucp_ep_config(ep)->key, str,
+    ucp_wireup_print_config(ep, &ucp_ep_config(ep)->key, str,
                             addr_indices, cm_idx, UCS_LOG_LEVEL_DEBUG);
 
     /* establish connections on all underlying endpoints */

@@ -195,7 +195,7 @@ int ucp_proto_select_get_valid_range(
 
 /* Get the protocol selection hash for the endpoint or remote key config */
 ucp_proto_select_t *
-ucp_proto_select_get(ucp_worker_h worker, ucp_worker_cfg_index_t ep_cfg_index,
+ucp_proto_select_get(ucp_worker_h ep, ucp_worker_cfg_index_t ep_cfg_index,
                      ucp_worker_cfg_index_t rkey_cfg_index,
                      ucp_worker_cfg_index_t *new_rkey_cfg_index);
 

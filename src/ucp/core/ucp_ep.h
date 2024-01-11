@@ -504,6 +504,7 @@ typedef struct ucp_ep_ext {
                                                     used by 2-stage ppln rndv proto */
     /* List of requests which are waiting for remote completion */
     ucs_hlist_head_t              proto_reqs;
+    unsigned                      num_priorities;
 #if UCS_ENABLE_ASSERT
     ucs_time_t                    ka_last_round; /* Time of last KA round done */
 #endif
@@ -656,7 +657,7 @@ void ucp_ep_config_cm_lane_info_str(ucp_worker_h worker,
                                     ucp_rsc_index_t cm_index,
                                     ucs_string_buffer_t *buf);
 
-void ucp_ep_config_lane_info_str(ucp_worker_h worker,
+void ucp_ep_config_lane_info_str(const ucp_ep_h ep,
                                  const ucp_ep_config_key_t *key,
                                  const unsigned *addr_indices,
                                  ucp_lane_index_t lane,
@@ -726,7 +727,7 @@ void ucp_ep_unprogress_uct_ep(ucp_ep_h ep, uct_ep_h uct_ep,
 
 void ucp_ep_cleanup_lanes(ucp_ep_h ep);
 
-ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
+ucs_status_t ucp_ep_config_init(ucp_ep_h ep, ucp_ep_config_t *config,
                                 const ucp_ep_config_key_t *key);
 
 void ucp_ep_config_cleanup(ucp_worker_h worker, ucp_ep_config_t *config);

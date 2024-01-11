@@ -759,7 +759,14 @@ typedef struct ucp_ep_params {
      * This setting is optional. To enable it, the corresponding - @ref
      * UCP_EP_PARAM_FIELD_LOCAL_SOCK_ADDR bit in the field mask must be set.
      */
-    ucs_sock_addr_t         local_sockaddr;    
+    ucs_sock_addr_t         local_sockaddr;
+
+    /**
+     * Number of different priority levels,
+     * parameter must be between 1 and @ref ucp_worker_attr_t::max_priorities which
+     * can be acquired by @ref ucp_worker_query, default is 1.
+     */
+    unsigned                num_priorities;
 } ucp_ep_params_t;
 
 

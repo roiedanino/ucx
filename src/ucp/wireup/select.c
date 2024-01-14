@@ -2158,7 +2158,7 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
         }
     }
 
-    for (priority = 0; priority < num_priorities; ++priority) {
+   for (priority = 0; priority < num_priorities; ++priority) {
         /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
          * allow exclude AM lane from AM_BW list */
         status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);

@@ -229,6 +229,7 @@ static ucp_ep_h ucp_ep_allocate(ucp_worker_h worker, const char *peer_name)
 #endif
     ep->ext->peer_mem                     = NULL;
     ep->ext->uct_eps                      = NULL;
+    ep->ext->num_priorities               = 1;
 
     UCS_STATIC_ASSERT(sizeof(ep->ext->ep_match) >=
                       sizeof(ep->ext->flush_state));
@@ -603,7 +604,10 @@ ucp_ep_config_err_mode_check_mismatch(ucp_ep_h ep,
 static ucs_status_t
 ucp_ep_adjust_params(ucp_ep_h ep, const ucp_ep_params_t *params)
 {
+    unsigned num_priorities = UCP_PARAM_VALUE(EP, params, num_priorities,
+                                              NUM_PRIORITIES, 1);
     ucs_status_t status;
+
 
     if (params->field_mask & UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE) {
         status = ucp_ep_config_err_mode_check_mismatch(ep, params->err_mode);
@@ -621,6 +625,16 @@ ucp_ep_adjust_params(ucp_ep_h ep, const ucp_ep_params_t *params)
         /* user_data overrides err_handler.arg */
         ep->ext->user_data = params->user_data;
     }
+
+    if (num_priorities > UCP_MAX_PRIORITIES) {
+        ucs_error("Required invalid number of priorities: %u, max number of "
+                  "priorities: %u",
+                  num_priorities, UCP_MAX_PRIORITIES);
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    ep->ext->num_priorities = num_priorities;
+
 
     return UCS_OK;
 }
@@ -676,6 +690,7 @@ ucs_status_t ucp_worker_mem_type_eps_create(ucp_worker_h worker)
 {
     ucp_context_h context = worker->context;
     unsigned pack_flags   = ucp_worker_default_address_pack_flags(worker);
+    ucp_ep_params_t ep_params = {0};
     ucp_unpacked_address_t local_address;
     ucs_memory_type_t mem_type;
     ucs_status_t status;
@@ -715,8 +730,8 @@ ucs_status_t ucp_worker_mem_type_eps_create(ucp_worker_h worker)
         status = ucp_ep_create_to_worker_addr(worker, &ucp_tl_bitmap_max,
                                               &local_address,
                                               UCP_EP_INIT_FLAG_MEM_TYPE |
-                                              UCP_EP_INIT_FLAG_INTERNAL,
-                                              ep_name, addr_indices,
+                                                      UCP_EP_INIT_FLAG_INTERNAL,
+                                              ep_name, addr_indices, &ep_params,
                                               &worker->mem_type_ep[mem_type]);
         if (status != UCS_OK) {
             UCS_ASYNC_UNBLOCK(&worker->async);
@@ -823,7 +838,8 @@ ucp_ep_create_to_worker_addr(ucp_worker_h worker,
                              const ucp_tl_bitmap_t *local_tl_bitmap,
                              const ucp_unpacked_address_t *remote_address,
                              unsigned ep_init_flags, const char *message,
-                             unsigned *addr_indices, ucp_ep_h *ep_p)
+                             unsigned *addr_indices,
+                             const ucp_ep_params_t *params, ucp_ep_h *ep_p)
 {
     ucp_tl_bitmap_t ep_tl_bitmap;
     ucs_status_t status;
@@ -834,6 +850,11 @@ ucp_ep_create_to_worker_addr(ucp_worker_h worker,
                                 message, &ep);
     if (status != UCS_OK) {
         goto err;
+    }
+
+    status = ucp_ep_adjust_params(ep, params);
+    if (status != UCS_OK) {
+        goto err_delete;
     }
 
     /* initialize transport endpoints */
@@ -1093,7 +1114,8 @@ ucp_ep_create_api_to_worker_addr(ucp_worker_h worker,
 
     status = ucp_ep_create_to_worker_addr(worker, &ucp_tl_bitmap_max,
                                           &remote_address, ep_init_flags,
-                                          "from api call", addr_indices, &ep);
+                                          "from api call", addr_indices, params,
+                                          &ep);
     if (status != UCS_OK) {
         goto out_free_address;
     }
@@ -1187,9 +1209,7 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
                            ucp_ep_h *ep_p)
 {
     ucp_ep_h ep    = NULL;
-    unsigned flags          = UCP_PARAM_VALUE(EP, params, flags, FLAGS, 0);
-    unsigned num_priorities = UCP_PARAM_VALUE(EP, params, num_priorities,
-                                              NUM_PRIORITIES, 1);
+    unsigned flags = UCP_PARAM_VALUE(EP, params, flags, FLAGS, 0);
     ucs_status_t status;
 
     UCS_ASYNC_BLOCK(&worker->async);
@@ -1204,14 +1224,6 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
         status = UCS_ERR_INVALID_PARAM;
     }
 
-    if (num_priorities > UCP_MAX_PRIORITIES) {
-        ucs_error("Required invalid number of priorities: %u, max number of "
-                  "priorities: %u",
-                  num_priorities, UCP_MAX_PRIORITIES);
-        return UCS_ERR_INVALID_PARAM;
-    }
-    ep->ext->num_priorities = num_priorities;
-
     if (status == UCS_OK) {
 #if ENABLE_DEBUG_DATA
         if ((params->field_mask & UCP_EP_PARAM_FIELD_NAME) &&
@@ -1225,6 +1237,7 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
 
         ucp_ep_params_check_err_handling(ep, params);
         ucp_ep_update_flags(ep, UCP_EP_FLAG_USED, 0);
+
         *ep_p = ep;
     } else {
         ++worker->counters.ep_creation_failures;

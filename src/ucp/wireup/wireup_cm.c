@@ -1222,7 +1222,8 @@ ucp_ep_cm_server_create_connected(ucp_worker_h worker, unsigned ep_init_flags,
                                   ucp_conn_request_h conn_request,
                                   ucp_ep_h *ep_p)
 {
-    ucp_listener_h listener = conn_request->listener;
+    ucp_listener_h listener   = conn_request->listener;
+    ucp_ep_params_t ep_params = {0};
     ucp_tl_bitmap_t tl_bitmap;
     ucp_ep_h ep;
     ucs_status_t status;
@@ -1250,7 +1251,7 @@ ucp_ep_cm_server_create_connected(ucp_worker_h worker, unsigned ep_init_flags,
     status = ucp_ep_create_to_worker_addr(worker, &tl_bitmap, remote_addr,
                                           ep_init_flags,
                                           "conn_request on uct_listener",
-                                          addr_indices, &ep);
+                                          addr_indices, &ep_params, &ep);
     if (status != UCS_OK) {
         ucs_warn("failed to create server ep and connect to worker address on "
                  "device %s, tl_bitmap " UCT_TL_BITMAP_FMT ", status %s",

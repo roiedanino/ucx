@@ -1138,8 +1138,10 @@ static ucs_status_t ucp_perf_test_receive_remote_data(ucx_perf_context_t *perf,
                                                                      remote_info->ucp.worker_addr_len);
         perf->ucp.tctx[i].perf.ucp.remote_addr = remote_info->recv_buffer;
 
-        ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-        ep_params.address    = address;
+        ep_params.field_mask     = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
+                                   UCP_EP_PARAM_FIELD_NUM_PRIORITIES;
+        ep_params.address        = address;
+        ep_params.num_priorities = 2;
 
         if (perf->params.flags & UCX_PERF_TEST_FLAG_ERR_HANDLING) {
             ep_params.field_mask     |= UCP_EP_PARAM_FIELD_ERR_HANDLER |
@@ -1339,8 +1341,10 @@ static ucs_status_t ucp_perf_test_setup_self_endpoints(ucx_perf_context_t *perf)
         return status;
     }
 
-    ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-    ep_params.address    = worker_attr.address;
+    ep_params.field_mask     = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
+                                UCP_EP_PARAM_FIELD_NUM_PRIORITIES;
+    ep_params.address        = worker_attr.address;
+    ep_params.num_priorities = 2;
 
     for (i = 0; i < perf->params.thread_count; ++i) {
         thread_perf = &perf->ucp.tctx[i].perf;
@@ -1777,10 +1781,8 @@ static ucs_status_t ucp_perf_setup(ucx_perf_context_t *perf)
         goto err_free_mem;
     }
 
-    worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE |
-                                UCP_WORKER_PARAM_FIELD_NUM_PRIORITIES;
+    worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
     worker_params.thread_mode = perf->params.thread_mode;
-    worker_params.required_num_of_priorities = 2;
 
     for (i = 0; i < thread_count; i++) {
         perf->ucp.tctx[i].tid              = i;

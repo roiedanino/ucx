@@ -1829,7 +1829,7 @@ ucp_worker_print_used_tls(ucp_ep_h ep, ucp_worker_cfg_index_t cfg_index)
                  0) ||
                 (ucp_ep_config_get_multi_lane_prio(key->rma_bw_lanes, lane) >=
                  0)) {
-                if (context->config.features & UCP_FEATURE_TAG) {
+                if (context->config.features & UCP_FEATURE_TAG && (priority == 0)) {
                     tag_lanes_map |= UCS_BIT(lane);
                 }
 
@@ -1863,23 +1863,22 @@ ucp_worker_print_used_tls(ucp_ep_h ep, ucp_worker_cfg_index_t cfg_index)
                 amo_lanes_map |= UCS_BIT(lane);
             }
         }
+    }
 
-        if (num_valid_lanes == 0) {
-            return;
-        }
+    if (num_valid_lanes == 0) {
+        return;
+    }
 
-        if ((context->config.features & UCP_FEATURE_RMA) &&
-            (rma_lanes_map == 0)) {
-            ucs_assert(key->am_lanes[priority] != UCP_NULL_LANE);
-            rma_lanes_map |= UCS_BIT(key->am_lanes[priority]);
-            rma_emul       = 1;
-        }
+    if ((context->config.features & UCP_FEATURE_RMA) && (rma_lanes_map == 0)) {
+        ucs_assert(key->am_lanes[0] != UCP_NULL_LANE);
+        rma_lanes_map |= UCS_BIT(key->am_lanes[0]);
+        rma_emul       = 1;
+    }
 
-        if ((context->config.features & UCP_FEATURE_AMO) &&
-            (amo_lanes_map == 0) && (key->am_lanes[priority] != UCP_NULL_LANE)) {
-            amo_lanes_map |= UCS_BIT(key->am_lanes[priority]);
-            amo_emul       = 1;
-        }
+    if ((context->config.features & UCP_FEATURE_AMO) && (amo_lanes_map == 0) &&
+        (key->am_lanes[0] != UCP_NULL_LANE)) {
+        amo_lanes_map |= UCS_BIT(key->am_lanes[0]);
+        amo_emul       = 1;
     }
 
     ucp_worker_add_feature_rsc(context, key, tag_lanes_map, "tag", &strb);

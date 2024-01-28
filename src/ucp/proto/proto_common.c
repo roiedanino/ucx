@@ -447,7 +447,11 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
         }
 
         priority = ep_config_key->lanes[lane].priority;
-        if (priority != select_param->op.priority) {
+        if ((lane_type == UCP_LANE_TYPE_AM) &&
+            (priority != select_param->op.priority)) {
+            continue;
+        }
+        if ((lane_type != UCP_LANE_TYPE_AM) && priority > 0) {
             continue;
         }
 

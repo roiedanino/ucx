@@ -1914,11 +1914,10 @@ int ucp_ep_config_is_equal(const ucp_ep_config_key_t *key1,
         memcmp(key1->rma_bw_lanes, key2->rma_bw_lanes,
                sizeof(key1->rma_bw_lanes)) ||
         memcmp(key1->amo_lanes, key2->amo_lanes, sizeof(key1->amo_lanes)) ||
+        memcmp(key1->am_lanes, key2->am_lanes, sizeof(key1->am_lanes)) ||
         (key1->rma_bw_md_map != key2->rma_bw_md_map) ||
         (key1->rma_md_map != key2->rma_md_map) ||
         (key1->reachable_md_map != key2->reachable_md_map) ||
-        (key1->am_lanes[0] != key2->am_lanes[0]) ||
-        (key1->am_lanes[1] != key2->am_lanes[1]) ||
         (key1->tag_lane != key2->tag_lane) ||
         (key1->wireup_msg_lane != key2->wireup_msg_lane) ||
         (key1->cm_lane != key2->cm_lane) ||
@@ -3105,6 +3104,7 @@ void ucp_ep_config_lane_info_str(const ucp_ep_h ep,
     md_index   = context->tl_rscs[rsc_index].md_index;
     path_index = key->lanes[lane].path_index;
 
+
     ucs_string_buffer_appendf(strbuf,
        "lane[%d]: %2d:" UCT_TL_RESOURCE_DESC_FMT ".%u md[%d] %-*c-> ",
        lane, rsc_index, UCT_TL_RESOURCE_DESC_ARG(rsc), path_index, md_index,
@@ -3135,7 +3135,7 @@ void ucp_ep_config_lane_info_str(const ucp_ep_h ep,
 
     for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
         if (key->am_lanes[priority] == lane) {
-            ucs_string_buffer_appendf(strbuf, " am");
+            ucs_string_buffer_appendf(strbuf, " am [priority=%u]", priority);
         }
     }
 
@@ -3151,6 +3151,7 @@ void ucp_ep_config_lane_info_str(const ucp_ep_h ep,
     if (lane == key->tag_lane) {
         ucs_string_buffer_appendf(strbuf, " tag_offload");
     }
+    
 
     if (key->keepalive_lane == lane) {
         ucs_string_buffer_appendf(strbuf, " keepalive");

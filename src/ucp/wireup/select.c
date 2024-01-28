@@ -364,9 +364,10 @@ ucp_wireup_init_select_info(double score, unsigned addr_index,
 
 static size_t ucp_wireup_max_lanes(ucp_lane_type_t lane_type)
 {
+    size_t mult = (lane_type == UCP_LANE_TYPE_AM) ? UCP_MAX_PRIORITIES : 1;
     return (ucp_wireup_lane_type_is_fast_path(lane_type) ?
                    UCP_MAX_FAST_PATH_LANES :
-                   UCP_MAX_LANES) * UCP_MAX_PRIORITIES;
+                   UCP_MAX_LANES) * mult;
 }
 
 /**
@@ -707,6 +708,10 @@ ucp_wireup_path_index_is_equal(unsigned path_index1, unsigned path_index2)
            (path_index1 == path_index2);
 }
 
+static int ucp_wireup_is_priority_in_range(ucp_priority_t priority) {
+    return priority <= UCP_MAX_PRIORITIES;
+}
+
 static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
         const ucp_wireup_select_info_t *select_info,
         ucp_md_index_t dst_md_index, ucs_sys_device_t dst_sys_dev,
@@ -724,6 +729,9 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
      */
     for (lane_desc = select_ctx->lane_descs;
          lane_desc < select_ctx->lane_descs + select_ctx->num_lanes; ++lane_desc) {
+        if (!ucp_wireup_is_priority_in_range(lane_desc->priority)) {
+            lane_desc->priority = 0;
+        }
         if ((lane_desc->rsc_index == select_info->rsc_index) &&
             (lane_desc->addr_index == select_info->addr_index) &&
             (lane_desc->priority == priority) &&
@@ -2158,20 +2166,27 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
         }
     }
 
-   for (priority = 0; priority < num_priorities; ++priority) {
+    select_params->priority = 0;
+
+//    for (priority = 0; priority < num_priorities; ++priority) {
+        // select_params->priority = priority;
         /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
          * allow exclude AM lane from AM_BW list */
         status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
         if (status != UCS_OK) {
             return status;
         }
-    }
+    // }
 
-    status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
-                                     select_ctx);
-    if (status != UCS_OK) {
-        return status;
-    }
+    // for (priority = 0; priority < num_priorities; ++priority) {
+    //     select_params->priority = priority;
+        status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
+                                         select_ctx);
+        if (status != UCS_OK) {
+            return status;
+        }
+    // }
+
 
     /* Add slow protocols on the remaining lanes */
     status = ucp_wireup_add_rma_bw_lanes(select_params, select_ctx);

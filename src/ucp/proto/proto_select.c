@@ -788,6 +788,10 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
     for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
         ucs_carray_for_each(op_attribute, op_attributes,
                             ucs_static_array_size(op_attributes)) {
+            if ((op_id != UCP_OP_ID_AM_SEND) &&
+                (op_id != UCP_OP_ID_AM_SEND_REPLY) && (priority > 0)) {
+                continue;
+            }
             ucp_proto_select_param_init(&select_param, op_id, *op_attribute, 0,
                                         UCP_DATATYPE_CONTIG, &mem_info, 1, priority);
             thresh = ucp_proto_select_lookup(worker, proto_select, ep_cfg_index,

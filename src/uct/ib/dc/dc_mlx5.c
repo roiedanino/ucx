@@ -364,10 +364,9 @@ static void uct_ib_mlx5dv_dci_qp_init_attr(uct_ib_qp_init_attr_t *qp_attr,
 }
 
 ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
-                                                 uint8_t pool_index,
-                                                 uint8_t dci_index,
-                                                 uint8_t path_index,
-                                                 int full_handshake)
+                                          uint8_t pool_index, uint8_t dci_index,
+                                          uint8_t path_index,
+                                          int full_handshake)
 {
     uct_ib_iface_t *ib_iface           = &iface->super.super.super;
     uct_ib_mlx5_qp_attr_t attr         = {};
@@ -870,7 +869,8 @@ uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
         return UCS_ERR_EXCEEDS_LIMIT;
     }
 
-    pool_size = dci_config->key.is_keepalive ? 1 : iface->tx.ndci;
+    pool_size = dci_config->key.is_keepalive ? UCT_DC_MLX5_KEEPALIVE_NUM_DCIS :
+                                               iface->tx.ndci;
     status    = uct_dc_mlx5_iface_create_dci_pool(iface, dci_config, pool_size,
                                                   pool_index_p);
     if (status != UCS_OK) {
@@ -890,11 +890,10 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     uct_dc_mlx5_dci_config_t dci_config;
     uint8_t pool_index;
 
-    iface->tx.dcis = ucs_calloc(
-            (iface->tx.ndci *
-             UCT_DC_MLX5_IFACE_MAX_DCI_POOLS 
-             ) + UCT_DC_MLX5_KEEPALIVE_NUM_DCIS,
-            sizeof(*iface->tx.dcis), "dcis");
+    iface->tx.dcis = ucs_calloc((iface->tx.ndci *
+                                 UCT_DC_MLX5_IFACE_MAX_DCI_POOLS) +
+                                        UCT_DC_MLX5_KEEPALIVE_NUM_DCIS,
+                                sizeof(*iface->tx.dcis), "dcis");
     if (iface->tx.dcis == NULL) {
         status = UCS_ERR_NO_MEMORY;
         goto err;
@@ -909,7 +908,6 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
 
     iface->tx.bb_max = iface->tx.dcis[0].txwq.bb_max;
-
     return UCS_OK;
 
 err:

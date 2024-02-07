@@ -1260,9 +1260,9 @@ UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
 
     self->av.dqp_dct      = av->dqp_dct | htonl(remote_dctn);
     self->av.rlid         = av->rlid;
-    uct_dc_mlx5_dci_pool_get_or_create(iface, dci_config, &self->dci_pool_index);
-    self->flags = self->dci_pool_index %
-                  UCT_DC_MLX5_IFACE_MAX_DCI_POOLS;
+    uct_dc_mlx5_dci_pool_get_or_create(iface, dci_config,
+                                       &self->dci_pool_index);
+    self->flags = self->dci_pool_index % UCT_DC_MLX5_IFACE_MAX_DCI_POOLS;
 
     if (if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_FLUSH_RKEY) {
         self->flush_rkey_hi = flush_addr->flush_rkey_hi;

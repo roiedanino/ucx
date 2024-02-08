@@ -1038,6 +1038,7 @@ uct_dc_mlx5_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr
 
 static inline ucs_status_t uct_dc_mlx5_iface_flush_dcis(uct_dc_mlx5_iface_t *iface)
 {
+    uint8_t num_dcis;
     int i;
 
     if (kh_size(&iface->tx.fc_hash) != 0) {
@@ -1046,7 +1047,8 @@ static inline ucs_status_t uct_dc_mlx5_iface_flush_dcis(uct_dc_mlx5_iface_t *ifa
         return UCS_INPROGRESS;
     }
 
-    for (i = 0; i < iface->tx.ndci * iface->tx.num_dci_pools; i++) {
+    num_dcis = uct_dc_mlx5_iface_total_ndci(iface);
+    for (i = 0; i < num_dcis; i++) {
         if (uct_dc_mlx5_iface_flush_dci(iface, i) != UCS_OK) {
             return UCS_INPROGRESS;
         }

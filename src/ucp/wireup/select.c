@@ -821,6 +821,7 @@ ucp_wireup_add_lane(const ucp_wireup_select_params_t *select_params,
     ucp_address_entry_t *addr_list = select_params->address->address_list;
     unsigned addr_index            = select_info->addr_index;
 
+
     return ucp_wireup_add_lane_desc(select_info, addr_list[addr_index].md_index,
                                     addr_list[addr_index].sys_dev, lane_type,
                                     addr_list[addr_index].iface_attr.seg_size,
@@ -2043,6 +2044,7 @@ ucp_wireup_select_params_init(ucp_wireup_select_params_t *select_params,
     select_params->allow_am      =
             ucp_wireup_allow_am_emulation_layer(ep_init_flags);
     select_params->show_error    = show_error;
+    select_params->priority      = 0;
 }
 
 static double
@@ -2168,24 +2170,18 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_search_lanes(
 
     select_params->priority = 0;
 
-//    for (priority = 0; priority < num_priorities; ++priority) {
-        // select_params->priority = priority;
-        /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
-         * allow exclude AM lane from AM_BW list */
-        status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
-    // }
+    /* call ucp_wireup_add_am_bw_lanes after ucp_wireup_add_am_lane to
+     * allow exclude AM lane from AM_BW list */
+    status = ucp_wireup_add_am_bw_lanes(select_params, select_ctx);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-    // for (priority = 0; priority < num_priorities; ++priority) {
-    //     select_params->priority = priority;
-        status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
+    status = ucp_wireup_add_tag_lane(select_params, &am_info, err_mode,
                                          select_ctx);
-        if (status != UCS_OK) {
-            return status;
-        }
-    // }
+    if (status != UCS_OK) {
+        return status;
+    }
 
 
     /* Add slow protocols on the remaining lanes */

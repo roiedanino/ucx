@@ -527,6 +527,14 @@ static inline void uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *iface, uct_d
      */
     uint8_t pool_index           = uct_dc_mlx5_ep_pool_index(ep);
     uct_dc_mlx5_dci_pool_t *pool = &iface->tx.dci_pool[pool_index];
+    if (pool->size < pool->capacity) {
+        uct_dc_mlx5_iface_create_dci(
+                iface, pool_index, iface->tx.dci_counter,
+                pool->config->key.path_index,
+                iface->flags & UCT_DC_MLX5_IFACE_FLAG_DCI_FULL_HANDSHAKE);
+        pool->stack[pool->size] = iface->tx.dci_counter - 1;
+        ++pool->size;
+    }
 
     ucs_assert(!uct_dc_mlx5_iface_is_dci_shared(iface));
     ucs_assert(pool->release_stack_top < pool->stack_top);

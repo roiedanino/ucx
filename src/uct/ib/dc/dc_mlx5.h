@@ -247,6 +247,18 @@ typedef struct uct_dc_mlx5_ep_fc_entry {
 
 KHASH_MAP_INIT_INT64(uct_dc_mlx5_fc_hash, uct_dc_mlx5_ep_fc_entry_t);
 
+typedef union uct_dc_mlx5_dci_config {
+    struct {
+        uint8_t sl;
+        uint8_t port_affinity;
+        uint8_t path_index;
+        uint8_t is_keepalive;
+        uint8_t padding[4];
+    } key;
+    uint64_t u64;
+} uct_dc_mlx5_dci_config_t;
+
+KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
 
 /* DCI pool
  * same array is used to store DCI's to allocate and DCI's to release:
@@ -269,21 +281,10 @@ typedef struct {
     int8_t        release_stack_top; /* releasing dci's stack,
                                         points to last DCI to release
                                         or -1 if no DCI's to release */
+    uint8_t       capacity;
+    uint8_t       size;
+    const uct_dc_mlx5_dci_config_t *config;
 } uct_dc_mlx5_dci_pool_t;
-
-
-typedef union uct_dc_mlx5_dci_config {
-    struct {
-        uint8_t port_affinity;
-        uint8_t sl;
-        uint8_t path_index;
-        uint8_t is_keepalive;
-        uint8_t padding[4];
-    } key;
-    uint64_t u64;
-} uct_dc_mlx5_dci_config_t;
-
-KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
 
 
 struct uct_dc_mlx5_iface {
@@ -405,6 +406,10 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
                                   const uct_dc_mlx5_dci_config_t *config,
                                   uint8_t pool_size, uint8_t *pool_index_p);
 
+/**
+ * Checks whether dci pool config is present in dc_config_hash and returns 
+ * the matching pool index or creates a new one
+*/
 ucs_status_t
 uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
                                    const uct_dc_mlx5_dci_config_t *dci_config,

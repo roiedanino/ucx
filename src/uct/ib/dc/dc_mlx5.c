@@ -887,7 +887,11 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     uct_dc_mlx5_init_dci_config_key(&dci_config,
                                     iface->super.super.super.config.sl,
                                     iface->tx.port_affinity, 0, 0);
-    uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
+    status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
+    if(status != UCS_OK) {
+        return status;
+    }
+
     ucs_assert_always(pool_index < UCT_DC_MLX5_IFACE_MAX_DCI_POOLS);
     pool = &iface->tx.dci_pool[pool_index];
 
@@ -1802,7 +1806,10 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
     port_affinity  = iface->tx.port_affinity;
 
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0, 1);
-    uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
+    status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
+    if(status != UCS_OK) {
+        return status;
+    }
 
     iface->flags        |= UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE;
     iface->keepalive_dci = iface->tx.dci_counter - 1;

@@ -1797,6 +1797,7 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
 {
     uint8_t sl, port_affinity, pool_index;
     uct_dc_mlx5_dci_config_t dci_config;
+    ucs_status_t status;
 
     if (ucs_likely(iface->flags & UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE)) {
         return UCS_OK;

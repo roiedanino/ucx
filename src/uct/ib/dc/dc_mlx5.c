@@ -164,9 +164,9 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
                                                  uct_dc_mlx5_iface_t);
     const uint8_t sl            = iface->super.super.super.config.sl;
     const uint8_t port_affinity = iface->tx.port_affinity;
-    uct_dc_mlx5_dci_config_t dci_config;
     const uct_ib_address_t *ib_addr;
     const uct_dc_mlx5_iface_addr_t *if_addr;
+    uct_dc_mlx5_dci_config_t dci_config;
     ucs_status_t status;
     int is_global;
     uct_ib_mlx5_base_av_t av;
@@ -888,6 +888,7 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
                                     iface->super.super.super.config.sl,
                                     iface->tx.port_affinity, 0, 0);
     uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
+    ucs_assert_always(pool_index < UCT_DC_MLX5_IFACE_MAX_DCI_POOLS);
     pool = &iface->tx.dci_pool[pool_index];
 
     uct_dc_mlx5_iface_create_dci(

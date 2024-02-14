@@ -816,12 +816,6 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
     *pool_index_p = pool_index;
 
     return UCS_OK;
-
-err_pool_destroy:
-    uct_dc_mlx5_iface_dci_pool_destroy(dci_pool);
-    uct_dc_mlx5_iface_dcis_destroy(iface, pool_index);
-
-    return status;
 }
 
 ucs_status_t

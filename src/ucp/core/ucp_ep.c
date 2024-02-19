@@ -1225,8 +1225,7 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
         status = UCS_ERR_INVALID_PARAM;
     }
 
-    ucs_warn("Creating ep %s with: %u priorioties, mask: %lu",
-             (params->field_mask & UCP_EP_PARAM_FIELD_NAME) ? params->name : "",
+    ucs_warn("Creating ep %p with: %u priorioties, mask: %lu", ep,
              params->num_priorities,
              params->field_mask & UCP_EP_PARAM_FIELD_NUM_PRIORITIES);
 

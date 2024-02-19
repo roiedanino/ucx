@@ -840,10 +840,9 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
                                  "configuration, priority %u",
                                  priority);
                     }
+
                     /* not all op_attr options have same configuration */
-                    if (priority == 0) {
-                        goto out_disable;
-                    }
+                    goto out_disable;
                 }
 
                 /* Fast-path threshold is the minimal of all op_attr options */

@@ -798,6 +798,9 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
                                              rkey_cfg_index, &select_param, 0);
             if (thresh == NULL) {
                 /* no protocol for contig/host */
+                if (priority > 0) {
+                    ucs_warn("select_short_init: threash == NULL priority %u", priority);
+                }
                 goto out_disable;
             }
 
@@ -805,6 +808,11 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
             if (!ucs_test_all_flags(thresh->proto_config.proto->flags,
                                     proto_flags)) {
                 /* the protocol for smallest messages is not short */
+                if (priority > 0) {
+                    ucs_warn("select_short_init: protocol for smallest "
+                             "messages is not short, priority %u",
+                             priority);
+                }
                 goto out_disable;
             }
 
@@ -827,8 +835,15 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
                 if ((proto != thresh->proto_config.proto) ||
                     (proto_short->lane != spriv->super.lane) ||
                     (proto_short->rkey_index != spriv->super.rkey_index)) {
+                    if (priority > 0) {
+                        ucs_warn("not all op_attr options have same "
+                                 "configuration, priority %u",
+                                 priority);
+                    }
                     /* not all op_attr options have same configuration */
-                    goto out_disable;
+                    if (priority == 0) {
+                        goto out_disable;
+                    }
                 }
 
                 /* Fast-path threshold is the minimal of all op_attr options */

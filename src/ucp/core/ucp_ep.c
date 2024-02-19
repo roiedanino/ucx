@@ -158,6 +158,7 @@ void ucp_ep_config_key_reset(ucp_ep_config_key_t *key)
         key->lanes[i].path_index   = 0;
         key->lanes[i].lane_types   = 0;
         key->lanes[i].seg_size     = 0;
+        key->lanes[i].priority     = 0;
     }
     for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
         key->am_lanes[priority] = UCP_NULL_LANE;
@@ -786,7 +787,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_ep_config_key_t key;
     uct_ep_h uct_ep;
     ucs_status_t status;
-    ucp_priority_t priority;
+    // ucp_priority_t priority;
 
     ucs_assert(ep_init_flags & UCP_EP_INIT_CM_WIREUP_CLIENT);
     ucs_assert(ucp_worker_num_cm_cmpts(ep->worker) != 0);
@@ -798,9 +799,9 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     key.num_lanes = 1;
     /* all operations will use the first lane, which is a stub endpoint before
      * reconfiguration */
-    for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
-        key.am_lanes[priority] = 0;
-    }
+    // for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
+    key.am_lanes[0] = 0;
+    // }
 
     if (ucp_ep_init_flags_has_cm(ep_init_flags)) {
         key.cm_lane = 0;
@@ -1223,6 +1224,11 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
     } else {
         status = UCS_ERR_INVALID_PARAM;
     }
+
+    ucs_warn("Creating ep %s with: %u priorioties, mask: %lu",
+             (params->field_mask & UCP_EP_PARAM_FIELD_NAME) ? params->name : "",
+             params->num_priorities,
+             params->field_mask & UCP_EP_PARAM_FIELD_NUM_PRIORITIES);
 
     if (status == UCS_OK) {
 #if ENABLE_DEBUG_DATA
@@ -1845,7 +1851,8 @@ int ucp_ep_config_lane_is_peer_match(const ucp_ep_config_key_t *key1,
     return (config_lane1->rsc_index == config_lane2->rsc_index) &&
            (config_lane1->path_index == config_lane2->path_index) &&
            ucp_ep_lane_is_dst_index_match(config_lane1->dst_md_index,
-                                          config_lane2->dst_md_index);
+                                          config_lane2->dst_md_index) &&
+           (config_lane1->priority == config_lane2->priority);
 }
 
 static ucp_lane_index_t
@@ -1898,7 +1905,8 @@ static int ucp_ep_config_lane_is_equal(const ucp_ep_config_key_t *key1,
            (config_lane1->dst_md_index == config_lane2->dst_md_index) &&
            (config_lane1->dst_sys_dev == config_lane2->dst_sys_dev) &&
            (config_lane1->lane_types == config_lane2->lane_types) &&
-           (config_lane1->seg_size == config_lane2->seg_size);
+           (config_lane1->seg_size == config_lane2->seg_size) &&
+           (config_lane1->priority == config_lane2->priority);
 }
 
 int ucp_ep_config_is_equal(const ucp_ep_config_key_t *key1,
@@ -2531,6 +2539,7 @@ ucs_status_t ucp_ep_config_init(ucp_ep_h ep, ucp_ep_config_t *config,
     ucs_status_t status;
     ucp_md_index_t dst_md_index;
     size_t it;
+    ucp_priority_t priority;
 
     memset(config, 0, sizeof(*config));
 
@@ -2775,8 +2784,10 @@ ucs_status_t ucp_ep_config_init(ucp_ep_h ep, ucp_ep_config_t *config,
     }
 
     /* Configuration for active messages */
-    if (config->key.am_lanes[0] != UCP_NULL_LANE) {
-        lane        = config->key.am_lanes[0];
+    
+    for (priority = 0; priority < UCP_MAX_PRIORITIES; ++priority) {
+    if (config->key.am_lanes[priority] != UCP_NULL_LANE) {
+        lane        = config->key.am_lanes[priority];
         rsc_index   = config->key.lanes[lane].rsc_index;
         if (rsc_index != UCP_NULL_RESOURCE) {
             iface_attr = ucp_worker_iface_get_attr(worker, rsc_index);
@@ -2873,6 +2884,7 @@ ucs_status_t ucp_ep_config_init(ucp_ep_h ep, ucp_ep_config_t *config,
        }
     }
 
+    }
     memset(&config->rma, 0, sizeof(config->rma));
 
     status = ucp_ep_config_calc_rma_zcopy_thresh(worker, config,

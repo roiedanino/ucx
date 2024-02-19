@@ -401,6 +401,7 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
     const ucp_ep_config_key_t *ep_config_key     = params->ep_config_key;
     const ucp_rkey_config_key_t *rkey_config_key = params->rkey_config_key;
     const ucp_proto_select_param_t *select_param = params->select_param;
+    char lane_desc[64] = {0};
     const uct_iface_attr_t *iface_attr;
     ucp_lane_index_t lane, num_lanes;
     const uct_md_attr_v2_t *md_attr;
@@ -408,7 +409,6 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
     ucp_rsc_index_t rsc_index;
     ucp_md_index_t md_index;
     ucp_lane_map_t lane_map;
-    char lane_desc[64];
     size_t max_iov;
     uint32_t priority;
 
@@ -446,18 +446,20 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
             continue;
         }
 
-        priority = ep_config_key->lanes[lane].priority;
-        if ((lane_type == UCP_LANE_TYPE_AM) &&
-            (priority != select_param->op.priority)) {
-            continue;
-        }
-        if ((lane_type != UCP_LANE_TYPE_AM) && priority > 0) {
-            continue;
-        }
-
         snprintf(lane_desc, sizeof(lane_desc),
                  "lane[%d] " UCT_TL_RESOURCE_DESC_FMT, lane,
                  UCT_TL_RESOURCE_DESC_ARG(&context->tl_rscs[rsc_index].tl_rsc));
+
+        priority = ep_config_key->lanes[lane].priority;
+        if (priority != select_param->op.priority) {
+            // ucs_warn("%s - priority mismatch: priority = %u, looking "
+            //          "for: %u",
+            //          lane_desc, priority, select_param->op.priority);
+            continue;
+        }
+        else if (priority == 1) {
+            ucs_warn("%s - selected as a priority lane", lane_desc);
+        }
 
         /* Check if lane type matches */
         if ((lane_type != UCP_LANE_TYPE_LAST) &&
@@ -648,7 +650,7 @@ ucp_proto_common_find_am_bcopy_hdr_lane(const ucp_proto_init_params_t *params)
             UCP_PROTO_COMMON_OFFSET_INVALID, 1, UCP_LANE_TYPE_AM,
             UCT_IFACE_FLAG_AM_BCOPY, 1, 0, &lane);
     if (num_lanes == 0) {
-        ucs_debug("no active message lane for %s", params->proto_name);
+        ucs_warn("no active message lane for %s", params->proto_name);
         return UCP_NULL_LANE;
     }
 
@@ -743,6 +745,9 @@ ucs_status_t ucp_proto_request_init(ucp_request_t *req)
     msg_length = req->send.state.dt_iter.length;
     if (ucp_proto_config_is_am(req->send.proto_config)) {
         msg_length += req->send.msg_proto.am.header.length;
+        ucs_warn("requested AM with priority: %u, proto_config priority: %u",
+                 req->send.msg_proto.am.priority,
+                 req->send.proto_config->select_param.op.priority);
     }
 
     /* Select from protocol hash according to saved request parameters */

@@ -729,7 +729,9 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
      */
     for (lane_desc = select_ctx->lane_descs;
          lane_desc < select_ctx->lane_descs + select_ctx->num_lanes; ++lane_desc) {
-        if (!ucp_wireup_is_priority_in_range(lane_desc->priority)) {
+        if (!ucp_wireup_is_priority_in_range(lane_desc->priority) ||
+            !(lane_desc->lane_types & UCS_BIT(UCP_LANE_TYPE_AM))) {
+            // ucs_warn("lane desc [%d] priority was not set yet: ", lane_desc->rsc_index);
             lane_desc->priority = 0;
         }
         if ((lane_desc->rsc_index == select_info->rsc_index) &&
@@ -2319,6 +2321,8 @@ ucp_wireup_construct_lanes(const ucp_wireup_select_params_t *select_params,
         key->lanes[lane].lane_types   = select_ctx->lane_descs[lane].lane_types;
         key->lanes[lane].seg_size     = select_ctx->lane_descs[lane].seg_size;
         priority                      = select_ctx->lane_descs[lane].priority;
+        ucs_warn("wireup_construct_lanes: lane[%u] priority = %u", lane,
+                 priority);
         key->lanes[lane].priority     = priority;
         key->lanes[lane].path_index   = ucp_wireup_default_path_index(
                                        select_ctx->lane_descs[lane].path_index);

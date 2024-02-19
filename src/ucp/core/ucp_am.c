@@ -982,6 +982,7 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_send_nbx,
         ucp_request_send_check_status(status, ret, goto out);
         datatype      = ucp_dt_make_contig(1);
         contig_length = count;
+        ucs_warn("attr_mask == 0, contig_length = %lu", contig_length);
     } else if (attr_mask == UCP_OP_ATTR_FIELD_DATATYPE) {
         datatype = param->datatype;
         if (ucs_likely(UCP_DT_IS_CONTIG(datatype))) {
@@ -1024,6 +1025,8 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_send_nbx,
         req->send.msg_proto.am.priority        = (param->op_attr_mask &
                                                   UCP_OP_ATTR_FIELD_PRIORITY) ?
                 param->priority: 0;
+        ucs_warn("am_send_nbx: param->priority = %u",
+                 req->send.msg_proto.am.priority);
         ret = ucp_proto_request_send_op(ep, &ucp_ep_config(ep)->proto_select,
                                         UCP_WORKER_CFG_INDEX_NULL, req, op_id,
                                         buffer, count, datatype, contig_length,

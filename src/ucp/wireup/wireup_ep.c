@@ -215,7 +215,8 @@ void ucp_wireup_ep_set_aux(ucp_wireup_ep_t *wireup_ep, uct_ep_h uct_ep,
 
 static ucs_status_t
 ucp_wireup_ep_connect_aux(ucp_wireup_ep_t *wireup_ep, unsigned ep_init_flags,
-                          const ucp_unpacked_address_t *remote_address)
+                          const ucp_unpacked_address_t *remote_address,
+                          ucp_priority_t priority)
 {
     ucp_ep_h ucp_ep                      = wireup_ep->super.ucp_ep;
     ucp_worker_h worker                  = ucp_ep->worker;
@@ -242,10 +243,12 @@ ucp_wireup_ep_connect_aux(ucp_wireup_ep_t *wireup_ep, unsigned ep_init_flags,
     /* create auxiliary endpoint connected to the remote iface. */
     uct_ep_params.field_mask = UCT_EP_PARAM_FIELD_IFACE    |
                                UCT_EP_PARAM_FIELD_DEV_ADDR |
-                               UCT_EP_PARAM_FIELD_IFACE_ADDR;
+                               UCT_EP_PARAM_FIELD_IFACE_ADDR |
+                               UCT_EP_PARAM_FIELD_PRIORITY;
     uct_ep_params.iface      = wiface->iface;
     uct_ep_params.dev_addr   = aux_addr->dev_addr;
     uct_ep_params.iface_addr = aux_addr->iface_addr;
+    uct_ep_params.priority   = priority;
     status = uct_ep_create(&uct_ep_params, &uct_ep);
     if (status != UCS_OK) {
         /* coverity[leaked_storage] */
@@ -493,7 +496,7 @@ ucs_status_t ucp_wireup_ep_connect(uct_ep_h uct_ep, unsigned ep_init_flags,
     /* we need to create an auxiliary transport only for active messages */
     if (connect_aux) {
         status = ucp_wireup_ep_connect_aux(wireup_ep, ep_init_flags,
-                                           remote_address);
+                                           remote_address, priority);
         if (status != UCS_OK) {
             goto err_destroy_next_ep;
         }

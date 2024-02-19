@@ -793,7 +793,6 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
 {
     const int pool_index = iface->tx.num_dci_pools;
     uct_dc_mlx5_dci_pool_t *dci_pool;
-    ucs_status_t status;
 
     ucs_assert(iface->tx.num_dci_pools < UCT_DC_MLX5_IFACE_MAX_DCI_POOLS);
     ucs_debug("creating dci pool %u with %u QPs", pool_index, iface->tx.ndci);

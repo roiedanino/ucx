@@ -230,7 +230,7 @@ static ucp_ep_h ucp_ep_allocate(ucp_worker_h worker, const char *peer_name)
 #endif
     ep->ext->peer_mem                     = NULL;
     ep->ext->uct_eps                      = NULL;
-    ep->ext->num_priorities               = 1;
+    ep->ext->num_priorities               = 2;
 
     UCS_STATIC_ASSERT(sizeof(ep->ext->ep_match) >=
                       sizeof(ep->ext->flush_state));
@@ -787,7 +787,6 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     ucp_ep_config_key_t key;
     uct_ep_h uct_ep;
     ucs_status_t status;
-    // ucp_priority_t priority;
 
     ucs_assert(ep_init_flags & UCP_EP_INIT_CM_WIREUP_CLIENT);
     ucs_assert(ucp_worker_num_cm_cmpts(ep->worker) != 0);
@@ -799,9 +798,7 @@ ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
     key.num_lanes = 1;
     /* all operations will use the first lane, which is a stub endpoint before
      * reconfiguration */
-    // for (priority = 0; priority < ep->ext->num_priorities; ++priority) {
     key.am_lanes[0] = 0;
-    // }
 
     if (ucp_ep_init_flags_has_cm(ep_init_flags)) {
         key.cm_lane = 0;
@@ -914,6 +911,9 @@ static ucs_status_t ucp_ep_create_to_sock_addr(ucp_worker_h worker,
         UCP_EP_PARAMS_FLAGS_SEND_CLIENT_ID) {
         wireup_ep->flags |= UCP_WIREUP_EP_FLAG_SEND_CLIENT_ID;
     }
+
+    wireup_ep->super.ucp_ep->ext->num_priorities =
+            UCP_PARAM_VALUE(EP, params, num_priorities, NUM_PRIORITIES, 1);
 
     status = ucp_ep_adjust_params(ep, params);
     if (status != UCS_OK) {
@@ -1846,6 +1846,11 @@ int ucp_ep_config_lane_is_peer_match(const ucp_ep_config_key_t *key1,
 {
     const ucp_ep_config_key_lane_t *config_lane1 = &key1->lanes[lane1];
     const ucp_ep_config_key_lane_t *config_lane2 = &key2->lanes[lane2];
+    
+    if (config_lane1->priority != config_lane2->priority) {
+        ucs_warn("is_peer_match - intersection - priority mismatch %u != %u",
+                 config_lane1->priority, config_lane2->priority);
+    }
 
     return (config_lane1->rsc_index == config_lane2->rsc_index) &&
            (config_lane1->path_index == config_lane2->path_index) &&

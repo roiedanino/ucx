@@ -452,9 +452,9 @@ static ucp_lane_index_t ucp_proto_common_find_lanes_internal(
 
         priority = ep_config_key->lanes[lane].priority;
         if (priority != select_param->op.priority) {
-            // ucs_warn("%s - priority mismatch: priority = %u, looking "
-            //          "for: %u",
-            //          lane_desc, priority, select_param->op.priority);
+            ucs_warn("%s - priority mismatch: priority = %u, looking "
+                     "for: %u",
+                     lane_desc, priority, select_param->op.priority);
             continue;
         }
         else if (priority == 1) {

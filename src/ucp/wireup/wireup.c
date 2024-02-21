@@ -642,7 +642,8 @@ ucp_wireup_process_request(ucp_worker_h worker, ucp_ep_h ep,
             }
 
             /* add internal endpoint to hash */
-            ep->conn_sn = msg->conn_sn;
+            ep->conn_sn             = msg->conn_sn;
+            ep->ext->num_priorities = 2;
             if (!ucp_ep_match_insert(worker, ep, remote_uuid, ep->conn_sn,
                                      UCS_CONN_MATCH_QUEUE_UNEXP)) {
                 if (worker->context->config.features & UCP_FEATURE_STREAM) {
@@ -1184,9 +1185,6 @@ ucp_wireup_connect_lane(ucp_ep_h ep, unsigned ep_init_flags,
     rsc_index  = ucp_ep_get_rsc_index(ep, lane);
     wiface     = ucp_worker_iface(worker, rsc_index);
     priority   = ucp_ep_config(ep)->key.lanes[lane].priority;
-    if (priority != 0) {
-        ucs_warn("wireup_connect_lane, priority: %u", priority);
-    }
 
     /*
      * create a wireup endpoint which will start connection establishment
@@ -1546,7 +1544,7 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
 
     ucs_assert(!UCS_BITMAP_IS_ZERO_INPLACE(&tl_bitmap));
 
-    ucs_warn("ep %p: initialize lanes", ep);
+    ucs_trace("ep %p: initialize lanes", ep);
     ucs_log_indent(1);
 
     ucp_ep_config_key_reset(&key);
@@ -1650,8 +1648,6 @@ ucs_status_t ucp_wireup_init_lanes(ucp_ep_h ep, unsigned ep_init_flags,
                                              key.lanes[lane].path_index,
                                              remote_address, addr_indices[lane]);
             if (status != UCS_OK) {
-                ucs_warn("failed to wireup_connect_lane(%p - %u): %s", ep, lane,
-                         ucs_status_string(status));
                 goto out;
             }
         }

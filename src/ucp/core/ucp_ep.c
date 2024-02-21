@@ -1225,10 +1225,6 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker, const ucp_ep_params_t *params,
         status = UCS_ERR_INVALID_PARAM;
     }
 
-    ucs_warn("Creating ep %p with: %u priorioties, mask: %lu", ep,
-             params->num_priorities,
-             params->field_mask & UCP_EP_PARAM_FIELD_NUM_PRIORITIES);
-
     if (status == UCS_OK) {
 #if ENABLE_DEBUG_DATA
         if ((params->field_mask & UCP_EP_PARAM_FIELD_NAME) &&
@@ -1847,11 +1843,6 @@ int ucp_ep_config_lane_is_peer_match(const ucp_ep_config_key_t *key1,
     const ucp_ep_config_key_lane_t *config_lane1 = &key1->lanes[lane1];
     const ucp_ep_config_key_lane_t *config_lane2 = &key2->lanes[lane2];
     
-    if (config_lane1->priority != config_lane2->priority) {
-        ucs_warn("is_peer_match - intersection - priority mismatch %u != %u",
-                 config_lane1->priority, config_lane2->priority);
-    }
-
     return (config_lane1->rsc_index == config_lane2->rsc_index) &&
            (config_lane1->path_index == config_lane2->path_index) &&
            ucp_ep_lane_is_dst_index_match(config_lane1->dst_md_index,

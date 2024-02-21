@@ -805,9 +805,6 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
             if (!ucs_test_all_flags(thresh->proto_config.proto->flags,
                                     proto_flags)) {
                 /* the protocol for smallest messages is not short */
-                ucs_warn("select_short_init: protocol for smallest "
-                         "messages is not short, priority %u",
-                         priority);
                 goto out_disable;
             }
 
@@ -830,10 +827,6 @@ void ucp_proto_select_short_init(ucp_worker_h worker,
                 if ((proto != thresh->proto_config.proto) ||
                     (proto_short->lane != spriv->super.lane) ||
                     (proto_short->rkey_index != spriv->super.rkey_index)) {
-                    ucs_warn("not all op_attr options have same "
-                             "configuration, priority %u",
-                             priority);
-
                     /* not all op_attr options have same configuration */
                     goto out_disable;
                 }

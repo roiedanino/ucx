@@ -216,6 +216,7 @@ typedef struct uct_dc_dci {
     uint8_t                       path_index; /* Path index */
     uint8_t                       next_channel_index; /* next DCI channel index
                                                          to be used by EP */
+    uint8_t                       initialized;
 } uct_dc_dci_t;
 
 

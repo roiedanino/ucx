@@ -1805,6 +1805,8 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
         return status;
     }
 
+    uct_dc_mlx5_dci_pool_add_dci(iface, pool_index, iface->tx.dci_counter);
+
     iface->flags        |= UCT_DC_MLX5_IFACE_FLAG_KEEPALIVE;
     iface->keepalive_dci = iface->tx.dci_counter - 1;
     return UCS_OK;

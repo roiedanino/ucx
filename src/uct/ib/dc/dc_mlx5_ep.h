@@ -562,16 +562,16 @@ uct_dc_mlx5_iface_dci_detach(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
     return 1;
 }
 
-static inline void uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface,
-                                                uint8_t pool_index,
-                                                uint8_t dci_index)
+static inline ucs_status_t
+uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
+                             uint8_t dci_index)
 {
     uct_dc_mlx5_dci_pool_t *pool = &iface->tx.dci_pool[pool_index];
     ucs_status_t status;
 
     if ((pool->size == pool->capacity) ||
         iface->tx.dcis[dci_index].initialized) {
-        return;
+        return UCS_OK;
     }
 
     status = uct_dc_mlx5_iface_create_dci(
@@ -581,15 +581,16 @@ static inline void uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface,
     if (status != UCS_OK) {
         ucs_error("iface %p: failed to create dci %u at pool %u", iface,
                   dci_index, pool_index);
-        return;
+        return status;
     }
 
     pool->stack[pool->size] = dci_index;
     ++pool->size;
     iface->tx.dcis[dci_index].initialized = 1;
+    return UCS_OK;
 }
 
-static inline void uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
+static inline ucs_status_t uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
 {
     /* take a first available dci from stack.
      * There is no need to check txqp because
@@ -597,13 +598,15 @@ static inline void uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *iface, uct_d
      */
     uint8_t pool_index           = uct_dc_mlx5_ep_pool_index(ep);
     uct_dc_mlx5_dci_pool_t *pool = &iface->tx.dci_pool[pool_index];
+    ucs_status_t status;
 
-    uct_dc_mlx5_dci_pool_add_dci(iface, pool_index, iface->tx.dci_counter);
+    status = uct_dc_mlx5_dci_pool_add_dci(iface, pool_index, iface->tx.dci_counter);
+    if (status != UCS_OK) {
+        return status;
+    }
     ucs_assert(!uct_dc_mlx5_iface_is_dci_shared(iface));
     ucs_assert(pool->release_stack_top < pool->stack_top);
     ep->dci = pool->stack[pool->stack_top];
-    ucs_assert(ep->dci >= (iface->tx.ndci * pool_index));
-    ucs_assert(ep->dci < (iface->tx.ndci * (pool_index + 1)));
     ucs_assert(uct_dc_mlx5_ep_from_dci(iface, ep->dci) == NULL);
     iface->tx.dcis[ep->dci].ep = ep;
     pool->stack_top++;
@@ -614,6 +617,8 @@ static inline void uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *iface, uct_d
     ucs_assertv(pool->stack_top > 0, "dci pool overflow, stack_top=%d",
                 (int)pool->stack_top);
     ucs_trace_data("iface %p: allocate dci %d for ep %p", iface, ep->dci, ep);
+
+    return UCS_OK;
 }
 
 int uct_dc_mlx5_ep_is_connected(const uct_ep_h tl_ep,
@@ -676,8 +681,7 @@ uct_dc_mlx5_iface_dci_get(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
         waitq = uct_dc_mlx5_iface_dci_waitq(iface, pool_index);
         ucs_assert(ucs_arbiter_is_empty(waitq));
 
-        uct_dc_mlx5_iface_dci_alloc(iface, ep);
-        return UCS_OK;
+        return uct_dc_mlx5_iface_dci_alloc(iface, ep);
     }
 
 out_no_res:

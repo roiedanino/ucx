@@ -524,6 +524,9 @@ uct_dc_mlx5_iface_dci_has_outstanding(uct_dc_mlx5_iface_t *iface, int dci_index)
 {
     uct_rc_txqp_t *txqp;
 
+    if (!iface->tx.dcis[dci_index].initialized) {
+        return 0;
+    }
     txqp = &iface->tx.dcis[dci_index].txqp;
     return uct_rc_txqp_available(txqp) < (int16_t)iface->tx.bb_max;
 }

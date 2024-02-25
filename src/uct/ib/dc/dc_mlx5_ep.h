@@ -586,7 +586,6 @@ uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
 
     pool->stack[pool->size] = dci_index;
     ++pool->size;
-    iface->tx.dcis[dci_index].initialized = 1;
     return UCS_OK;
 }
 

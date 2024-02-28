@@ -452,8 +452,8 @@ init_qp:
         goto err_qp;
     }
 
-    dci->pool_index  = pool_index;
-    dci->path_index  = path_index;
+    dci->pool_index = pool_index;
+    dci->path_index = path_index;
 
     status = uct_dc_mlx5_iface_dci_connect(iface, dci);
     if (status != UCS_OK) {

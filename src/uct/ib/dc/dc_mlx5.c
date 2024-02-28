@@ -1098,6 +1098,9 @@ ucs_status_t uct_dc_mlx5_iface_init_fc_ep(uct_dc_mlx5_iface_t *iface)
 
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config,
                                                 &pool_index);
+    if (status != UCS_OK) {
+        goto err_cleanup;
+    }
     ep->flags = pool_index;
     status    = uct_dc_mlx5_ep_basic_init(iface, ep);
     if (status != UCS_OK) {

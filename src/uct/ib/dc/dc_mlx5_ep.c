@@ -1311,6 +1311,10 @@ UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_ep_t)
                        "iface (%p) ep (%p) dci leak detected: dci=%d", iface,
                        self, self->dci);
 
+    if (!iface->tx.dcis[self->dci].initialized) {
+        return;
+    }
+
     /* TODO should be removed by flush */
     uct_rc_txqp_purge_outstanding(&iface->super.super,
                                   &iface->tx.dcis[self->dci].txqp, UCS_ERR_CANCELED,

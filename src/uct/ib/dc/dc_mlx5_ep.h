@@ -27,35 +27,35 @@
 
 enum uct_dc_mlx5_ep_flags {
     /* DCI pool EP assigned to according to it's lag port */
-    UCT_DC_MLX5_EP_FLAG_POOL_INDEX_MASK     = UCS_MASK(3),
+    UCT_DC_MLX5_EP_FLAG_POOL_INDEX_MASK     = UCS_MASK(5),
 
     /* EP is in the tx_wait state. See description of the dcs+quota dci
        selection policy above */
-    UCT_DC_MLX5_EP_FLAG_TX_WAIT             = UCS_BIT(3),
+    UCT_DC_MLX5_EP_FLAG_TX_WAIT             = UCS_BIT(5),
 
     /* EP has GRH address. Used by dc_mlx5 endpoint */
-    UCT_DC_MLX5_EP_FLAG_GRH                 = UCS_BIT(4),
+    UCT_DC_MLX5_EP_FLAG_GRH                 = UCS_BIT(6),
 
     /* Keepalive Request scheduled: indicates that keepalive request
      * is scheduled in outstanding queue and no more keepalive actions
      * are needed */
-    UCT_DC_MLX5_EP_FLAG_KEEPALIVE_POSTED    = UCS_BIT(5),
+    UCT_DC_MLX5_EP_FLAG_KEEPALIVE_POSTED    = UCS_BIT(7),
 
     /* Flush cancel was executed on EP */
-    UCT_DC_MLX5_EP_FLAG_FLUSH_CANCEL        = UCS_BIT(6),
+    UCT_DC_MLX5_EP_FLAG_FLUSH_CANCEL        = UCS_BIT(8),
 
     /* Error handler already called or flush(CANCEL) disabled it */
-    UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED = UCS_BIT(7),
+    UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED = UCS_BIT(9),
 
     /* EP supports flush remote operation */
-    UCT_DC_MLX5_EP_FLAG_FLUSH_RKEY          = UCS_BIT(8),
+    UCT_DC_MLX5_EP_FLAG_FLUSH_RKEY          = UCS_BIT(10),
 
     /* Flush remote operation should be invoked */
-    UCT_DC_MLX5_EP_FLAG_FLUSH_REMOTE        = UCS_BIT(9),
+    UCT_DC_MLX5_EP_FLAG_FLUSH_REMOTE        = UCS_BIT(11),
 
 #if UCS_ENABLE_ASSERT
     /* EP was invalidated without DCI */
-    UCT_DC_MLX5_EP_FLAG_INVALIDATED         = UCS_BIT(10)
+    UCT_DC_MLX5_EP_FLAG_INVALIDATED         = UCS_BIT(12)
 #else
     UCT_DC_MLX5_EP_FLAG_INVALIDATED         = 0
 #endif
@@ -316,20 +316,16 @@ void uct_dc_mlx5_ep_handle_failure(uct_dc_mlx5_ep_t *ep,
                                    struct mlx5_cqe64 *cqe,
                                    ucs_status_t status);
 
-ucs_status_t
-uct_dc_mlx5_dci_get_or_create(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
-                              const uct_dc_mlx5_dci_config_t *dci_config,
-                              uint8_t *dci_index_p);
-
 static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_init_dci_config_key(uct_dc_mlx5_dci_config_t *dci_config,
                                 uint8_t sl, uint8_t port_affinity,
-                                uint8_t path_index, uint8_t is_keepalive)
+                                uint8_t path_index,
+                                uct_dc_mlx5_ep_type_t ep_type)
 {
     dci_config->key.sl            = sl;
     dci_config->key.port_affinity = port_affinity;
     dci_config->key.path_index    = path_index;
-    dci_config->key.is_keepalive  = is_keepalive;
+    dci_config->key.ep_type       = ep_type;
     memset(dci_config->key.padding, 0, sizeof(dci_config->key.padding));
 }
 
@@ -359,8 +355,8 @@ uct_dc_mlx5_ep_basic_init(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
 static UCS_F_ALWAYS_INLINE int
 uct_dc_mlx5_iface_dci_can_alloc(uct_dc_mlx5_iface_t *iface, uint8_t pool_index)
 {
-    return (pool_index < iface->tx.num_dci_pools) &&
-           (iface->tx.dci_pool[pool_index].stack_top < iface->tx.ndci);
+    ucs_assert_always(pool_index < iface->tx.num_dci_pools);
+    return iface->tx.dci_pool[pool_index].stack_top < iface->tx.ndci;
 }
 
 static UCS_F_ALWAYS_INLINE void
@@ -630,6 +626,7 @@ uct_dc_mlx5_iface_dci_get(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
     ucs_arbiter_t *waitq;
     uct_rc_txqp_t *txqp;
     int16_t available;
+    ucs_status_t status;
 
     ucs_assert(!iface->super.super.config.tx_moderation);
 
@@ -637,7 +634,10 @@ uct_dc_mlx5_iface_dci_get(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
         /* Silence Coverity - in random policy the endpoint always has an
          * assigned DCI */
         ucs_assert(ep->dci != UCT_DC_MLX5_EP_NO_DCI);
-        uct_dc_mlx5_dci_pool_add_dci(iface, pool_index, ep->dci);
+        status = uct_dc_mlx5_dci_pool_add_dci(iface, pool_index, ep->dci);
+        if (status != UCS_OK) {
+            return status;
+        }
         if (uct_dc_mlx5_iface_dci_has_tx_resources(iface, ep->dci)) {
             return UCS_OK;
         } else {

@@ -248,13 +248,19 @@ typedef struct uct_dc_mlx5_ep_fc_entry {
 
 KHASH_MAP_INIT_INT64(uct_dc_mlx5_fc_hash, uct_dc_mlx5_ep_fc_entry_t);
 
+typedef enum uct_dc_mlx5_ep_type {
+    UCT_DC_MLX5_EP_TYPE_DEFAULT,
+    UCT_DC_MLX5_EP_TYPE_KEEPALIVE,
+    UCT_DC_MLX5_EP_TYPE_FC
+} UCS_S_PACKED uct_dc_mlx5_ep_type_t;
+
 typedef union uct_dc_mlx5_dci_config {
     struct {
-        uint8_t sl;
-        uint8_t port_affinity;
-        uint8_t path_index;
-        uint8_t is_keepalive;
-        uint8_t padding[4];
+        uint8_t               sl;
+        uint8_t               port_affinity;
+        uint8_t               path_index;
+        uct_dc_mlx5_ep_type_t ep_type;
+        uint8_t               padding[4];
     } key;
     uint64_t u64;
 } uct_dc_mlx5_dci_config_t;
@@ -458,10 +464,11 @@ uct_dc_mlx5_iface_fill_ravh(struct ibv_ravh *ravh, uint32_t dct_num)
 }
 #endif
 
-static UCS_F_ALWAYS_INLINE uint8_t
-uct_dc_mlx5_iface_total_ndci(uct_dc_mlx5_iface_t *iface)
+static UCS_F_ALWAYS_INLINE size_t 
+uct_dc_mlx5_iface_max_total_dcis(uct_dc_mlx5_iface_t *iface)
 {
-    return iface->tx.dci_counter;
+    return (iface->tx.ndci * UCT_DC_MLX5_IFACE_MAX_DCI_POOLS) +
+           UCT_DC_MLX5_KEEPALIVE_NUM_DCIS;
 }
 
 /* TODO:
@@ -481,9 +488,10 @@ uct_dc_mlx5_iface_dci_find(uct_dc_mlx5_iface_t *iface, struct mlx5_cqe64 *cqe)
     }
 
     qp_num = ntohl(cqe->sop_drop_qpn) & UCS_MASK(UCT_IB_QPN_ORDER);
-    ndci   = uct_dc_mlx5_iface_total_ndci(iface);
+    ndci   = uct_dc_mlx5_iface_max_total_dcis(iface);
     for (i = 0; i < ndci; i++) {
-        if (iface->tx.dcis[i].txwq.super.qp_num == qp_num) {
+        if (iface->tx.dcis[i].initialized &&
+            (iface->tx.dcis[i].txwq.super.qp_num == qp_num)) {
             return i;
         }
     }

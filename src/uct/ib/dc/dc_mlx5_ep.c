@@ -1250,6 +1250,7 @@ UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
     const uct_dc_mlx5_iface_flush_addr_t *flush_addr =
             ucs_derived_of(if_addr, uct_dc_mlx5_iface_flush_addr_t);
     uint32_t remote_dctn;
+    uint8_t pool_index;
     ucs_status_t status;
 
     ucs_trace_func("");
@@ -1262,12 +1263,11 @@ UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
     self->av.dqp_dct      = av->dqp_dct | htonl(remote_dctn);
     self->av.rlid         = av->rlid;
 
-    status = uct_dc_mlx5_dci_pool_get_or_create(iface, dci_config,
-                                                &self->dci_pool_index);
+    status = uct_dc_mlx5_dci_pool_get_or_create(iface, dci_config, &pool_index);
     if (status != UCS_OK) {
         return status;
     }
-    self->flags = self->dci_pool_index % UCT_DC_MLX5_IFACE_MAX_DCI_POOLS;
+    self->flags = pool_index % UCT_DC_MLX5_IFACE_MAX_DCI_POOLS;
 
     if (if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_FLUSH_RKEY) {
         self->flush_rkey_hi = flush_addr->flush_rkey_hi;

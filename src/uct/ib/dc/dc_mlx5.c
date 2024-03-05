@@ -164,6 +164,7 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
                                                  uct_dc_mlx5_iface_t);
     const uint8_t sl            = iface->super.super.super.config.sl;
     const uint8_t port_affinity = iface->tx.port_affinity;
+    const uint8_t max_rd_atomic = iface->super.super.config.max_rd_atomic;
     const uct_ib_address_t *ib_addr;
     const uct_dc_mlx5_iface_addr_t *if_addr;
     uct_dc_mlx5_dci_config_t dci_config;
@@ -180,8 +181,9 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     if_addr    = (const uct_dc_mlx5_iface_addr_t *)params->iface_addr;
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
 
+
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, path_index,
-                                    UCT_DC_MLX5_EP_TYPE_DEFAULT);
+                                    UCT_DC_MLX5_EP_TYPE_DEFAULT, max_rd_atomic);
 
     status = uct_ud_mlx5_iface_get_av(&iface->super.super.super,
                                       &iface->ud_common, ib_addr, path_index,
@@ -286,6 +288,7 @@ uct_dc_mlx5_poll_tx(uct_dc_mlx5_iface_t *iface, int poll_flags)
     ucs_memory_cpu_load_fence();
 
     dci_index = uct_dc_mlx5_iface_dci_find(iface, cqe);
+    ucs_assert_always(iface->tx.dcis[dci_index].initialized);
     txqp      = &iface->tx.dcis[dci_index].txqp;
     txwq      = &iface->tx.dcis[dci_index].txwq;
     hw_ci     = ntohs(cqe->wqe_counter);
@@ -501,13 +504,18 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     uct_ib_mlx5_md_t *md = ucs_derived_of(iface->super.super.super.super.md,
                                           uct_ib_mlx5_md_t);
     uct_ib_device_t *dev = uct_ib_iface_device(&iface->super.super.super);
+    uct_dc_mlx5_dci_pool_t *dci_pool = &iface->tx.dci_pool[dci->pool_index];
+    uct_dc_mlx5_dci_config_t dci_config = {
+        .u64 = dci_pool->config_key
+    }; 
     struct ibv_qp_attr attr;
     long attr_mask;
     ucs_status_t status;
 
+    uct_dc_mlx5_dump_config(&dci_config);
     if (md->flags & UCT_IB_MLX5_MD_FLAG_DEVX) {
         return uct_dc_mlx5_iface_devx_dci_connect(iface, &dci->txwq.super,
-                                                  dci->path_index);
+                                                  &dci_config);
     }
 
     ucs_assert(dci->txwq.super.type == UCT_IB_MLX5_OBJ_TYPE_VERBS);
@@ -535,7 +543,7 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     attr.qp_state                   = IBV_QPS_RTR;
     attr.path_mtu                   = iface->super.super.super.config.path_mtu;
     attr.ah_attr.is_global          = iface->super.super.super.config.force_global_addr;
-    attr.ah_attr.sl                 = iface->super.super.super.config.sl;
+    attr.ah_attr.sl                 = iface->super.super.super.config.sl;//dci_config.key.sl;
     /* ib_core expects valid ah_attr::port_num when IBV_QP_AV is set */
     attr.ah_attr.port_num           = iface->super.super.super.config.port_num;
     attr_mask                       = IBV_QP_STATE     |
@@ -553,7 +561,7 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     attr.timeout        = iface->super.super.config.timeout;
     attr.rnr_retry      = iface->super.super.config.rnr_retry;
     attr.retry_cnt      = iface->super.super.config.retry_cnt;
-    attr.max_rd_atomic  = iface->super.super.config.max_rd_atomic;
+    attr.max_rd_atomic  = dci_config.key.max_rd_atomic;
     attr_mask           = IBV_QP_STATE      |
                           IBV_QP_SQ_PSN     |
                           IBV_QP_TIMEOUT    |
@@ -815,7 +823,7 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
     dci_pool->release_stack_top = -1;
     dci_pool->capacity          = pool_size;
     dci_pool->size              = 0;
-    dci_pool->config            = config;
+    dci_pool->config_key        = config->u64;
 
     iface->tx.num_dci_pools++;
     *pool_index_p = pool_index;
@@ -883,7 +891,8 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     uct_dc_mlx5_init_dci_config_key(&dci_config,
                                     iface->super.super.super.config.sl,
                                     iface->tx.port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_DEFAULT);
+                                    UCT_DC_MLX5_EP_TYPE_DEFAULT,
+                                    iface->super.super.config.max_rd_atomic);
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
     if(status != UCS_OK) {
         return status;
@@ -1024,7 +1033,7 @@ uct_dc_mlx5_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr
 
 static inline ucs_status_t uct_dc_mlx5_iface_flush_dcis(uct_dc_mlx5_iface_t *iface)
 {
-    uint8_t num_dcis;
+    size_t num_dcis;
     int i;
 
     if (kh_size(&iface->tx.fc_hash) != 0) {
@@ -1072,7 +1081,7 @@ ucs_status_t uct_dc_mlx5_iface_init_fc_ep(uct_dc_mlx5_iface_t *iface)
     uct_dc_mlx5_dci_config_t dci_config;
     ucs_status_t status;
     uct_dc_mlx5_ep_t *ep;
-    uint8_t pool_index, sl, port_affinity;
+    uint8_t pool_index, sl, port_affinity, max_rd_atomic;
 
     ep = ucs_malloc(sizeof(uct_dc_mlx5_ep_t), "fc_ep");
     if (ep == NULL) {
@@ -1092,9 +1101,10 @@ ucs_status_t uct_dc_mlx5_iface_init_fc_ep(uct_dc_mlx5_iface_t *iface)
 
     sl             = iface->super.super.super.config.sl;
     port_affinity  = iface->tx.port_affinity;
+    max_rd_atomic  = iface->super.super.config.max_rd_atomic;
 
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_FC);
+                                    UCT_DC_MLX5_EP_TYPE_FC, max_rd_atomic);
 
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config,
                                                 &pool_index);
@@ -1805,7 +1815,7 @@ reset_dci:
 
 ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
 {
-    uint8_t sl, port_affinity, pool_index;
+    uint8_t sl, port_affinity, pool_index, max_rd_atomic;
     uct_dc_mlx5_dci_config_t dci_config;
     ucs_status_t status;
 
@@ -1813,11 +1823,13 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
         return UCS_OK;
     }
 
-    sl             = iface->super.super.super.config.sl;
-    port_affinity  = iface->tx.port_affinity;
+    sl            = iface->super.super.super.config.sl;
+    port_affinity = iface->tx.port_affinity;
+    max_rd_atomic = iface->super.super.config.max_rd_atomic;
 
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_KEEPALIVE);
+                                    UCT_DC_MLX5_EP_TYPE_KEEPALIVE,
+                                    max_rd_atomic);
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
     if (status != UCS_OK) {
         return status;

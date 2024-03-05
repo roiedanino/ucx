@@ -256,14 +256,15 @@ typedef enum uct_dc_mlx5_ep_type {
 
 typedef union uct_dc_mlx5_dci_config {
     struct {
-        uint8_t               sl;
-        uint8_t               port_affinity;
-        uint8_t               path_index;
-        uct_dc_mlx5_ep_type_t ep_type;
-        uint8_t               padding[4];
+        uint8_t sl;
+        uint8_t port_affinity;
+        uint8_t path_index;
+        uint8_t ep_type;
+        uint8_t max_rd_atomic;
+        uint8_t padding[3];
     } key;
     uint64_t u64;
-} uct_dc_mlx5_dci_config_t;
+} UCS_S_PACKED uct_dc_mlx5_dci_config_t;
 
 KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
 
@@ -290,7 +291,7 @@ typedef struct {
                                         or -1 if no DCI's to release */
     uint8_t       capacity;
     uint8_t       size;
-    const uct_dc_mlx5_dci_config_t *config;
+    uint64_t      config_key;
 } uct_dc_mlx5_dci_pool_t;
 
 
@@ -428,9 +429,10 @@ ucs_status_t uct_dc_mlx5_iface_devx_create_dct(uct_dc_mlx5_iface_t *iface);
 
 ucs_status_t uct_dc_mlx5_iface_devx_set_srq_dc_params(uct_dc_mlx5_iface_t *iface);
 
-ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
-                                                uct_ib_mlx5_qp_t *qp,
-                                                uint8_t path_index);
+ucs_status_t
+uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
+                                   uct_ib_mlx5_qp_t *qp,
+                                   const uct_dc_mlx5_dci_config_t *dci_config);
 
 #else
 
@@ -447,7 +449,8 @@ uct_dc_mlx5_iface_devx_set_srq_dc_params(uct_dc_mlx5_iface_t *iface)
 }
 
 static UCS_F_MAYBE_UNUSED ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(
-        uct_dc_mlx5_iface_t *iface, uct_ib_mlx5_qp_t *qp, uint8_t path_index)
+        uct_dc_mlx5_iface_t *iface, uct_ib_mlx5_qp_t *qp,
+        const uct_dc_mlx5_dci_config_t *dci_config)
 {
     return UCS_ERR_UNSUPPORTED;
 }

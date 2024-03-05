@@ -77,7 +77,6 @@ struct uct_dc_mlx5_ep {
     uct_rc_fc_t           fc;
     uct_dc_mlx5_base_av_t av;
     uint8_t               dci_channel_index;
-    uint8_t               dci_pool_index;
 };
 
 typedef struct {
@@ -316,16 +315,26 @@ void uct_dc_mlx5_ep_handle_failure(uct_dc_mlx5_ep_t *ep,
                                    struct mlx5_cqe64 *cqe,
                                    ucs_status_t status);
 
+static void uct_dc_mlx5_dump_config(const uct_dc_mlx5_dci_config_t *config)
+{
+    ucs_info("DCI CONFIG: SL=%u port affinity=%u path index=%u max rd "
+             "atomic=%u ep type=%u",
+             config->key.sl, config->key.port_affinity, config->key.path_index,
+             config->key.max_rd_atomic, config->key.ep_type);
+}
+
 static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_init_dci_config_key(uct_dc_mlx5_dci_config_t *dci_config,
                                 uint8_t sl, uint8_t port_affinity,
                                 uint8_t path_index,
-                                uct_dc_mlx5_ep_type_t ep_type)
+                                uct_dc_mlx5_ep_type_t ep_type,
+                                uint8_t max_rd_atomic)
 {
     dci_config->key.sl            = sl;
     dci_config->key.port_affinity = port_affinity;
     dci_config->key.path_index    = path_index;
     dci_config->key.ep_type       = ep_type;
+    dci_config->key.max_rd_atomic = max_rd_atomic;
     memset(dci_config->key.padding, 0, sizeof(dci_config->key.padding));
 }
 
@@ -563,17 +572,24 @@ uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
                              uint8_t dci_index)
 {
     uct_dc_mlx5_dci_pool_t *pool = &iface->tx.dci_pool[pool_index];
+    uct_dc_mlx5_dci_config_t pool_config = {
+        .u64 = pool->config_key
+    };
     ucs_status_t status;
+
 
     if ((pool->size == pool->capacity) ||
         iface->tx.dcis[dci_index].initialized) {
         return UCS_OK;
     }
 
+    ucs_info("adding dci...");
+    uct_dc_mlx5_dump_config(&pool_config);
     status = uct_dc_mlx5_iface_create_dci(
             iface, pool_index, dci_index,
-            pool->config->key.path_index,
+            pool_config.key.path_index,
             iface->flags & UCT_DC_MLX5_IFACE_FLAG_DCI_FULL_HANDSHAKE);
+
     if (status != UCS_OK) {
         ucs_error("iface %p: failed to create dci %u at pool %u", iface,
                   dci_index, pool_index);

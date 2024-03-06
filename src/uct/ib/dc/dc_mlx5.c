@@ -181,7 +181,6 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     if_addr    = (const uct_dc_mlx5_iface_addr_t *)params->iface_addr;
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
 
-
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, path_index,
                                     UCT_DC_MLX5_EP_TYPE_DEFAULT, max_rd_atomic);
 
@@ -1140,7 +1139,7 @@ static void uct_dc_mlx5_iface_cleanup_fc_ep(uct_dc_mlx5_iface_t *iface)
     uct_rc_fc_cleanup(&fc_ep->fc);
 
     if (!iface->tx.dcis[fc_ep->dci].initialized) {
-        return;
+        goto out;
     }
 
     if (uct_dc_mlx5_iface_is_dci_shared(iface)) {

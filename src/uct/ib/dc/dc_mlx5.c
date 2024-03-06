@@ -182,7 +182,7 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
 
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, path_index,
-                                    UCT_DC_MLX5_EP_TYPE_DEFAULT, max_rd_atomic);
+                                    0, max_rd_atomic);
 
     status = uct_ud_mlx5_iface_get_av(&iface->super.super.super,
                                       &iface->ud_common, ib_addr, path_index,
@@ -541,7 +541,7 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     attr.qp_state                   = IBV_QPS_RTR;
     attr.path_mtu                   = iface->super.super.super.config.path_mtu;
     attr.ah_attr.is_global          = iface->super.super.super.config.force_global_addr;
-    attr.ah_attr.sl                 = iface->super.super.super.config.sl;//dci_config.key.sl;
+    attr.ah_attr.sl                 = dci_config.key.sl;
     /* ib_core expects valid ah_attr::port_num when IBV_QP_AV is set */
     attr.ah_attr.port_num           = iface->super.super.super.config.port_num;
     attr_mask                       = IBV_QP_STATE     |
@@ -559,7 +559,7 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     attr.timeout        = iface->super.super.config.timeout;
     attr.rnr_retry      = iface->super.super.config.rnr_retry;
     attr.retry_cnt      = iface->super.super.config.retry_cnt;
-    attr.max_rd_atomic  = dci_config.key.max_rd_atomic;
+    attr.max_rd_atomic  = uct_dc_mlx5_dci_config_get_max_rd_atomic(&dci_config);
     attr_mask           = IBV_QP_STATE      |
                           IBV_QP_SQ_PSN     |
                           IBV_QP_TIMEOUT    |
@@ -853,7 +853,7 @@ uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
         return UCS_ERR_EXCEEDS_LIMIT;
     }
 
-    pool_size = (dci_config->key.ep_type == UCT_DC_MLX5_EP_TYPE_KEEPALIVE) ?
+    pool_size = (dci_config->key.flags & UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE) ?
                         UCT_DC_MLX5_KEEPALIVE_NUM_DCIS :
                         iface->tx.ndci;
     status    = uct_dc_mlx5_iface_create_dci_pool(iface, dci_config, pool_size,
@@ -888,8 +888,7 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     /* Create a 'default' dci pool to be used when no eps were created */
     uct_dc_mlx5_init_dci_config_key(&dci_config,
                                     iface->super.super.super.config.sl,
-                                    iface->tx.port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_DEFAULT,
+                                    iface->tx.port_affinity, 0, 0,
                                     iface->super.super.config.max_rd_atomic);
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
     if(status != UCS_OK) {
@@ -1101,8 +1100,8 @@ ucs_status_t uct_dc_mlx5_iface_init_fc_ep(uct_dc_mlx5_iface_t *iface)
     port_affinity  = iface->tx.port_affinity;
     max_rd_atomic  = iface->super.super.config.max_rd_atomic;
 
-    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_FC, max_rd_atomic);
+    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0, 0,
+                                    max_rd_atomic);
 
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config,
                                                 &pool_index);
@@ -1145,7 +1144,7 @@ static void uct_dc_mlx5_iface_cleanup_fc_ep(uct_dc_mlx5_iface_t *iface)
     if (uct_dc_mlx5_iface_is_dci_shared(iface)) {
         txqp = &iface->tx.dcis[fc_ep->dci].txqp;
         ucs_queue_for_each_safe(op, iter, &txqp->outstanding, queue) {
-            if (op && op->handler == uct_dc_mlx5_ep_fc_pure_grant_send_completion) {
+            if (op->handler == uct_dc_mlx5_ep_fc_pure_grant_send_completion) {
                 ucs_queue_del_iter(&txqp->outstanding, iter);
                 op->handler(op, NULL);
             }
@@ -1825,8 +1824,7 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface)
     port_affinity = iface->tx.port_affinity;
     max_rd_atomic = iface->super.super.config.max_rd_atomic;
 
-    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0,
-                                    UCT_DC_MLX5_EP_TYPE_KEEPALIVE,
+    uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, 0, 1,
                                     max_rd_atomic);
     status = uct_dc_mlx5_dci_pool_get_or_create(iface, &dci_config, &pool_index);
     if (status != UCS_OK) {

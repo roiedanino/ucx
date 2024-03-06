@@ -136,7 +136,7 @@ ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
     if (uct_ib_iface_is_roce(&rc_iface->super)) {
         UCT_IB_MLX5DV_SET(qpc, qpc, primary_address_path.eth_prio,
                           dci_config->key.sl);
-        if (iface->tx.port_affinity) {
+        if (dci_config->key.flags & UCT_DC_MLX5_DCI_CONFIG_PORT_AFFINITY) {
             uct_ib_mlx5_devx_set_qpc_port_affinity(md,
                                                    dci_config->key.path_index,
                                                    qpc, &opt_param_mask);
@@ -160,7 +160,8 @@ ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
     UCT_IB_MLX5DV_SET(qpc, qpc, pm_state, UCT_IB_MLX5_QPC_PM_STATE_MIGRATED);
     /* cppcheck-suppress internalAstError */
     UCT_IB_MLX5DV_SET(qpc, qpc, log_sra_max,
-                      ucs_ilog2_or0(dci_config->key.max_rd_atomic));
+                      ucs_ilog2_or0(uct_dc_mlx5_dci_config_get_max_rd_atomic(
+                              dci_config)));
     UCT_IB_MLX5DV_SET(qpc, qpc, retry_count, rc_iface->config.retry_cnt);
     UCT_IB_MLX5DV_SET(qpc, qpc, rnr_retry, rc_iface->config.rnr_retry);
     UCT_IB_MLX5DV_SET(qpc, qpc, primary_address_path.ack_timeout,

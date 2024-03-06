@@ -319,14 +319,25 @@ static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_init_dci_config_key(uct_dc_mlx5_dci_config_t *dci_config,
                                 uint8_t sl, uint8_t port_affinity,
                                 uint8_t path_index,
-                                uct_dc_mlx5_ep_type_t ep_type,
+                                uint8_t is_keepalive,
                                 uint8_t max_rd_atomic)
 {
-    dci_config->key.sl            = sl;
-    dci_config->key.port_affinity = port_affinity;
-    dci_config->key.path_index    = path_index;
-    dci_config->key.ep_type       = ep_type;
-    dci_config->key.max_rd_atomic = max_rd_atomic;
+    dci_config->key.sl         = sl;
+    dci_config->key.path_index = path_index;
+    dci_config->key.flags      = 0;
+
+    if (is_keepalive) {
+        dci_config->key.flags |= UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE;
+    }
+
+    if (port_affinity) {
+        dci_config->key.flags |= UCT_DC_MLX5_DCI_CONFIG_PORT_AFFINITY;
+    }
+
+    if (max_rd_atomic == 64) {
+        dci_config->key.flags |= UCT_DC_MLX5_DCI_CONFIG_MAX_RD_ATOMIC_IS_64;
+    }
+
     memset(dci_config->key.padding, 0, sizeof(dci_config->key.padding));
 }
 

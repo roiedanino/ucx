@@ -248,20 +248,18 @@ typedef struct uct_dc_mlx5_ep_fc_entry {
 
 KHASH_MAP_INIT_INT64(uct_dc_mlx5_fc_hash, uct_dc_mlx5_ep_fc_entry_t);
 
-typedef enum uct_dc_mlx5_ep_type {
-    UCT_DC_MLX5_EP_TYPE_DEFAULT,
-    UCT_DC_MLX5_EP_TYPE_KEEPALIVE,
-    UCT_DC_MLX5_EP_TYPE_FC
-} UCS_S_PACKED uct_dc_mlx5_ep_type_t;
+enum uct_dc_mlx5_dci_config_flags {
+    UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE           = UCS_BIT(0),
+    UCT_DC_MLX5_DCI_CONFIG_PORT_AFFINITY       = UCS_BIT(1),
+    UCT_DC_MLX5_DCI_CONFIG_MAX_RD_ATOMIC_IS_64 = UCS_BIT(2)
+};
 
 typedef union uct_dc_mlx5_dci_config {
     struct {
         uint8_t sl;
-        uint8_t port_affinity;
         uint8_t path_index;
-        uint8_t ep_type;
-        uint8_t max_rd_atomic;
-        uint8_t padding[3];
+        uint8_t flags;
+        uint8_t padding[5];
     } key;
     uint64_t u64;
 } UCS_S_PACKED uct_dc_mlx5_dci_config_t;
@@ -561,6 +559,11 @@ static UCS_F_ALWAYS_INLINE int
 uct_dc_mlx5_iface_is_dci_keepalive(uct_dc_mlx5_iface_t *iface, int dci_index)
 {
     return dci_index == iface->keepalive_dci;
+}
+
+static UCS_F_ALWAYS_INLINE uint8_t
+uct_dc_mlx5_dci_config_get_max_rd_atomic(const uct_dc_mlx5_dci_config_t *dci_config) {
+    return dci_config->key.flags & UCT_DC_MLX5_DCI_CONFIG_MAX_RD_ATOMIC_IS_64 ? 64 : 16;
 }
 
 #endif

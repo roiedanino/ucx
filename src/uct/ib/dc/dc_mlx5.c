@@ -507,12 +507,11 @@ ucs_status_t uct_dc_mlx5_iface_dci_connect(uct_dc_mlx5_iface_t *iface,
     uct_dc_mlx5_dci_pool_t *dci_pool = &iface->tx.dci_pool[dci->pool_index];
     uct_dc_mlx5_dci_config_t dci_config = {
         .u64 = dci_pool->config_key
-    }; 
+    };
     struct ibv_qp_attr attr;
     long attr_mask;
     ucs_status_t status;
 
-    uct_dc_mlx5_dump_config(&dci_config);
     if (md->flags & UCT_IB_MLX5_MD_FLAG_DEVX) {
         return uct_dc_mlx5_iface_devx_dci_connect(iface, &dci->txwq.super,
                                                   &dci_config);

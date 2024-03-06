@@ -315,14 +315,6 @@ void uct_dc_mlx5_ep_handle_failure(uct_dc_mlx5_ep_t *ep,
                                    struct mlx5_cqe64 *cqe,
                                    ucs_status_t status);
 
-static void uct_dc_mlx5_dump_config(const uct_dc_mlx5_dci_config_t *config)
-{
-    ucs_info("DCI CONFIG: SL=%u port affinity=%u path index=%u max rd "
-             "atomic=%u ep type=%u",
-             config->key.sl, config->key.port_affinity, config->key.path_index,
-             config->key.max_rd_atomic, config->key.ep_type);
-}
-
 static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_init_dci_config_key(uct_dc_mlx5_dci_config_t *dci_config,
                                 uint8_t sl, uint8_t port_affinity,
@@ -583,8 +575,6 @@ uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
         return UCS_OK;
     }
 
-    ucs_info("adding dci...");
-    uct_dc_mlx5_dump_config(&pool_config);
     status = uct_dc_mlx5_iface_create_dci(
             iface, pool_index, dci_index,
             pool_config.key.path_index,

@@ -135,10 +135,7 @@ ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
     UCT_IB_MLX5DV_SET(qpc, qpc, rae, true);
     if (uct_ib_iface_is_roce(&rc_iface->super)) {
         UCT_IB_MLX5DV_SET(qpc, qpc, primary_address_path.eth_prio,
-
-                            iface->super.super.super.config.sl
-                         // dci_config->key.sl
-                          );
+                          dci_config->key.sl);
         if (iface->tx.port_affinity) {
             uct_ib_mlx5_devx_set_qpc_port_affinity(md,
                                                    dci_config->key.path_index,
@@ -146,9 +143,7 @@ ucs_status_t uct_dc_mlx5_iface_devx_dci_connect(uct_dc_mlx5_iface_t *iface,
         }
     } else {
         UCT_IB_MLX5DV_SET(qpc, qpc, primary_address_path.sl,
-                         iface->super.super.super.config.sl
-                         // dci_config->key.sl
-                          );
+                          dci_config->key.sl);
     }
 
     UCT_IB_MLX5DV_SET(init2rtr_qp_in, in_2rtr, opt_param_mask, opt_param_mask);

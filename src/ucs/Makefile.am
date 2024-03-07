@@ -44,6 +44,7 @@ nobase_dist_libucs_la_HEADERS = \
 	datastruct/mpool.h \
 	datastruct/mpool_set.h \
 	datastruct/pgtable.h \
+	datastruct/piecewise_func.h \
 	datastruct/queue_types.h \
 	datastruct/strided_alloc.h \
 	datastruct/string_buffer.h \
@@ -165,6 +166,7 @@ libucs_la_SOURCES = \
 	config/parser.c \
 	datastruct/arbiter.c \
 	datastruct/array.c \
+	datastruct/bitmap.c \
 	datastruct/callbackq.c \
 	datastruct/frag_list.c \
 	datastruct/lru.c \
@@ -172,6 +174,7 @@ libucs_la_SOURCES = \
 	datastruct/mpool.c \
 	datastruct/mpool_set.c \
 	datastruct/pgtable.c \
+	datastruct/piecewise_func.c \
 	datastruct/ptr_array.c \
 	datastruct/ptr_map.c \
 	datastruct/strided_alloc.c \

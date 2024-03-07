@@ -101,7 +101,7 @@ void test_md::test_reg_mem(unsigned access_mask,
     params.flags       = UCT_MD_MEM_DEREG_FLAG_INVALIDATE;
     params.comp        = &comp().comp;
 
-    if (!is_supported_reg_mem_flags(access_mask)) {
+    if (!check_invalidate_support(access_mask)) {
         params.field_mask = UCT_MD_MEM_DEREG_FIELD_COMPLETION |
                             UCT_MD_MEM_DEREG_FIELD_FLAGS |
                             UCT_MD_MEM_DEREG_FIELD_MEMH;
@@ -173,7 +173,7 @@ test_md::test_md()
     /* coverity[uninit_member] */
 }
 
-bool test_md::is_supported_reg_mem_flags(unsigned reg_flags) const
+bool test_md::check_invalidate_support(unsigned reg_flags) const
 {
     return (reg_flags & md_flags_remote_rma) ?
            check_caps(UCT_MD_FLAG_INVALIDATE_RMA) :
@@ -592,9 +592,8 @@ UCS_TEST_SKIP_COND_P(test_md, reg,
     void *address;
     uct_mem_h memh;
 
-    for (unsigned mem_type_id = 0; mem_type_id < UCS_MEMORY_TYPE_LAST; mem_type_id++) {
-        ucs_memory_type_t mem_type = static_cast<ucs_memory_type_t>(mem_type_id);
-        if (!(md_attr().reg_mem_types & UCS_BIT(mem_type_id))) {
+    for (auto mem_type : mem_buffer::supported_mem_types()) {
+        if (!(md_attr().reg_mem_types & UCS_BIT(mem_type))) {
             UCS_TEST_MESSAGE << mem_buffer::mem_type_name(mem_type) << " memory "
                              << "registration is not supported by "
                              << GetParam().md_name;
@@ -634,17 +633,15 @@ UCS_TEST_SKIP_COND_P(test_md, reg_perf,
     ucs_status_t status;
     void *ptr;
 
-    for (unsigned mem_type_id = 0; mem_type_id < UCS_MEMORY_TYPE_LAST; mem_type_id++) {
-        ucs_memory_type_t mem_type = static_cast<ucs_memory_type_t>(mem_type_id);
-        if (!(md_attr().reg_mem_types & UCS_BIT(mem_type_id))) {
+    for (auto mem_type : mem_buffer::supported_mem_types()) {
+        if (!(md_attr().reg_mem_types & UCS_BIT(mem_type))) {
             UCS_TEST_MESSAGE << mem_buffer::mem_type_name(mem_type) << " memory "
                              << " registration is not supported by "
                              << GetParam().md_name;
             continue;
         }
         for (size_t size = 4 * UCS_KBYTE; size <= 4 * UCS_MBYTE; size *= 2) {
-            alloc_memory(&ptr, size, NULL,
-                         static_cast<ucs_memory_type_t>(mem_type_id));
+            alloc_memory(&ptr, size, NULL, mem_type);
 
             ucs_time_t start_time = ucs_get_time();
             ucs_time_t end_time = start_time;
@@ -1084,13 +1081,15 @@ UCS_TEST_SKIP_COND_P(test_md_fork, fork,
     ASSERT_EQ(pid, waitpid(pid, &child_status, 0));
     EXPECT_TRUE(WIFEXITED(child_status)) << ucs::exit_status_info(child_status);
 
+#ifndef __SANITIZE_ADDRESS__
     if (!RUNNING_ON_VALGRIND) {
-        /* Under valgrind, leaks are possible due to early exit, so don't expect
-         * an exit status of 0
+        /* Under valgrind or ASAN, leaks are possible due to early exit,
+         * so don't expect an exit status of 0
          */
         EXPECT_EQ(0, WEXITSTATUS(child_status)) <<
                 ucs::exit_status_info(child_status);
     }
+#endif
 
     free(page);
 }
@@ -1189,6 +1188,10 @@ UCS_TEST_P(test_cuda, sparse_regions)
     if (!(md_attr().cache_mem_types & md_attr().reg_mem_types &
           UCS_BIT(UCS_MEMORY_TYPE_CUDA))) {
         UCS_TEST_SKIP_R("not caching CUDA registration");
+    }
+
+    if (!mem_buffer::is_mem_type_supported(UCS_MEMORY_TYPE_CUDA)) {
+        UCS_TEST_SKIP_R("CUDA is not supported");
     }
 
     /* create contiguous CUDA registrations list */

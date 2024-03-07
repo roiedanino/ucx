@@ -189,9 +189,10 @@ protected:
         void revoke_ep(unsigned index);
         void destroy_eps();
         void connect(unsigned index, entity& other, unsigned other_index);
-        void connect_to_iface(unsigned index, entity& other);
-        void connect_to_ep(unsigned index, entity& other,
-                           unsigned other_index);
+        void connect_to_iface(unsigned index, entity &other,
+                              unsigned path_index = 0);
+        void connect_to_ep(unsigned index, entity &other, unsigned other_index,
+                           unsigned path_index = 0);
         void connect_to_sockaddr(unsigned index,
                                  const ucs::sock_addr_storage &remote_addr,
                                  const ucs::sock_addr_storage *local_addr,
@@ -246,10 +247,14 @@ protected:
                       unsigned mem_flags = UCT_MD_MEM_ACCESS_ALL);
         virtual ~mapped_buffer();
 
+        mapped_buffer(mapped_buffer &&other);
+
         void *ptr() const;
         uintptr_t addr() const;
         size_t length() const;
         uct_mem_h memh() const;
+        ucs_memory_type_t mem_type() const;
+        void *reg_addr() const;
         uct_rkey_t rkey() const;
         const uct_iov_t* iov() const;
 
@@ -260,6 +265,7 @@ protected:
         static size_t pack(void *dest, void *arg);
 
     private:
+        void reset();
 
         const uct_test::entity& m_entity;
 

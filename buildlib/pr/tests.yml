@@ -5,6 +5,8 @@ parameters:
   name: subtest
   container:
   proto_enable: yes
+  asan_check: no
+  valgrind_check: no
 
 jobs:
   - job: tests_${{ parameters.name }}
@@ -21,11 +23,12 @@ jobs:
     ${{ if parameters.container }}:
       container: ${{ parameters.container }}
     workspace:
-      clean: all
+      clean: outputs
     steps:
       - checkout: self
         clean: true
         fetchDepth: 100
+        retryCountOnTaskFailure: 5
 
       - bash: |
           source ./buildlib/az-helpers.sh
@@ -46,5 +49,6 @@ jobs:
           RUN_TESTS: yes
           JENKINS_TEST_PERF: ${{ parameters.test_perf }}
           PROTO_ENABLE: ${{ parameters.proto_enable }}
-          JENKINS_NO_VALGRIND: ${{ parameters.valgrind_disable }}
+          ASAN_CHECK: ${{ parameters.asan_check }}
+          VALGRIND_CHECK: ${{ parameters.valgrind_check }}
           RUNNING_IN_AZURE: yes

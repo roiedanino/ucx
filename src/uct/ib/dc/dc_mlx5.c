@@ -164,7 +164,6 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
                                                  uct_dc_mlx5_iface_t);
     const uint8_t sl            = iface->super.super.super.config.sl;
     const uint8_t port_affinity = iface->tx.port_affinity;
-    const uint8_t max_rd_atomic = iface->super.super.config.max_rd_atomic;
     const uct_ib_address_t *ib_addr;
     const uct_dc_mlx5_iface_addr_t *if_addr;
     uct_dc_mlx5_dci_config_t dci_config;
@@ -173,6 +172,7 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     uct_ib_mlx5_base_av_t av;
     struct mlx5_grh_av grh_av;
     unsigned path_index;
+    uint8_t max_rd_atomic, if_addr_max_rd_atomic;
 
     ucs_trace_func("");
 
@@ -180,6 +180,11 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     ib_addr    = (const uct_ib_address_t *)params->dev_addr;
     if_addr    = (const uct_dc_mlx5_iface_addr_t *)params->iface_addr;
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
+
+    if_addr_max_rd_atomic =
+            if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_MAX_RD_ATOMIC_16 ? 16 : 64;
+    max_rd_atomic = ucs_min(iface->super.super.config.max_rd_atomic,
+                            if_addr_max_rd_atomic);
 
     uct_dc_mlx5_init_dci_config_key(&dci_config, sl, port_affinity, path_index,
                                     0, max_rd_atomic);

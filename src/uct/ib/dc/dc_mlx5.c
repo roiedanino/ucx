@@ -1137,7 +1137,8 @@ static void uct_dc_mlx5_iface_cleanup_fc_ep(uct_dc_mlx5_iface_t *iface)
     ucs_arbiter_group_cleanup(&fc_ep->arb_group);
     uct_rc_fc_cleanup(&fc_ep->fc);
 
-    if (!iface->tx.dcis[fc_ep->dci].initialized) {
+    if ((fc_ep->dci != UCT_DC_MLX5_EP_NO_DCI) &&
+        (!iface->tx.dcis[fc_ep->dci].initialized)) {
         goto out;
     }
 

@@ -181,8 +181,10 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
     if_addr    = (const uct_dc_mlx5_iface_addr_t *)params->iface_addr;
     path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
 
-    if_addr_max_rd_atomic =
-            if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_MAX_RD_ATOMIC_16 ? 16 : 64;
+    if_addr_max_rd_atomic = (if_addr->flags &
+                             UCT_DC_MLX5_IFACE_ADDR_MAX_RD_ATOMIC_16) ?
+                                    16 :
+                                    64;
     max_rd_atomic = ucs_min(iface->super.super.config.max_rd_atomic,
                             if_addr_max_rd_atomic);
 

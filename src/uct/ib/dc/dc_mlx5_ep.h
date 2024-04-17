@@ -458,7 +458,7 @@ uct_dc_mlx5_iface_dci_release(uct_dc_mlx5_iface_t *iface, uint8_t dci_index)
     ucs_assertv(pool->stack_top >= 0, "dci pool underflow, stack_top=%d",
                 (int)pool->stack_top);
     ucs_assert(pool->release_stack_top < pool->stack_top);
-    pool->stack[pool->stack_top] = dci_index;
+    ucs_array_elem(&pool->stack, pool->stack_top) = dci_index;
 }
 
 /* Release endpoint's DCI below, if the endpoint does not have outstanding
@@ -535,8 +535,8 @@ uct_dc_mlx5_iface_dci_schedule_release(uct_dc_mlx5_iface_t *iface, uint8_t dci)
     stack_top = ++iface->tx.dci_pool[pool_index].release_stack_top;
     ucs_assert(stack_top < iface->tx.dci_pool[pool_index].stack_top);
 
-    iface->tx.dci_pool_release_bitmap              |= UCS_BIT(pool_index);
-    iface->tx.dci_pool[pool_index].stack[stack_top] = dci;
+    iface->tx.dci_pool_release_bitmap |= UCS_BIT(pool_index);
+    ucs_array_elem(&iface->tx.dci_pool[pool_index].stack, stack_top) = dci;
 
     ucs_callbackq_add_oneshot(&worker->progress_q, iface,
                               uct_dc_mlx5_ep_dci_release_progress, iface);
@@ -573,10 +573,11 @@ uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
         .u64 = pool->config_key
     };
     ucs_status_t status;
+    uint8_t* stack_ptr;
 
 
-    if ((pool->size == pool->capacity) ||
-        iface->tx.dcis[dci_index].initialized) {
+    if ((ucs_array_capacity(&pool->stack) == ucs_array_length(&pool->stack)) ||
+        uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index])) {
         return UCS_OK;
     }
 
@@ -591,8 +592,9 @@ uct_dc_mlx5_dci_pool_add_dci(uct_dc_mlx5_iface_t *iface, uint8_t pool_index,
         return status;
     }
 
-    pool->stack[pool->size] = dci_index;
-    ++pool->size;
+    stack_ptr  = ucs_array_append(&pool->stack, return UCS_ERR_NO_MEMORY);
+    *stack_ptr = dci_index;
+
     return UCS_OK;
 }
 
@@ -612,7 +614,7 @@ static inline ucs_status_t uct_dc_mlx5_iface_dci_alloc(uct_dc_mlx5_iface_t *ifac
     }
     ucs_assert(!uct_dc_mlx5_iface_is_dci_shared(iface));
     ucs_assert(pool->release_stack_top < pool->stack_top);
-    ep->dci = pool->stack[pool->stack_top];
+    ep->dci = ucs_array_elem(&pool->stack, pool->stack_top);
     ucs_assert(uct_dc_mlx5_ep_from_dci(iface, ep->dci) == NULL);
     iface->tx.dcis[ep->dci].ep = ep;
     pool->stack_top++;

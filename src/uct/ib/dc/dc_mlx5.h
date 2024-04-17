@@ -7,13 +7,14 @@
 #ifndef UCT_DC_IFACE_H
 #define UCT_DC_IFACE_H
 
+#include <ucs/datastruct/array.h>
+#include <ucs/debug/assert.h>
 #include <uct/ib/rc/base/rc_iface.h>
 #include <uct/ib/rc/base/rc_ep.h>
 #include <uct/ib/rc/verbs/rc_verbs.h>
 #include <uct/ib/rc/accel/rc_mlx5_common.h>
 #include <uct/ib/ud/base/ud_iface_common.h>
 #include <uct/ib/ud/accel/ud_mlx5_common.h>
-#include <ucs/debug/assert.h>
 
 
 /*
@@ -216,7 +217,6 @@ typedef struct uct_dc_dci {
     uint8_t                       path_index; /* Path index */
     uint8_t                       next_channel_index; /* next DCI channel index
                                                          to be used by EP */
-    uint8_t                       initialized;
 } uct_dc_dci_t;
 
 
@@ -264,6 +264,8 @@ typedef union uct_dc_mlx5_dci_config {
 
 KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
 
+UCS_ARRAY_DECLARE_TYPE(uct_dc_mlx5_pool_stack_t, uint8_t, uint8_t);
+
 /* DCI pool
  * same array is used to store DCI's to allocate and DCI's to release:
  *
@@ -279,15 +281,13 @@ KHASH_MAP_INIT_INT64(uct_dc_mlx5_config_hash, uint8_t);
  * ndci and these stacks are not intersected
  */
 typedef struct {
-    int8_t        stack_top;         /* dci stack top */
-    uint8_t       *stack;            /* LIFO of indexes of available dcis */
-    ucs_arbiter_t arbiter;           /* queue of requests waiting for DCI */
-    int8_t        release_stack_top; /* releasing dci's stack,
-                                        points to last DCI to release
-                                        or -1 if no DCI's to release */
-    uint8_t       capacity;
-    uint8_t       size;
-    uint64_t      config_key;
+    int8_t                   stack_top;         /* dci stack top */
+    uct_dc_mlx5_pool_stack_t stack;             /* LIFO of indexes of available dcis */
+    ucs_arbiter_t            arbiter;           /* queue of requests waiting for DCI */
+    int8_t                   release_stack_top; /* releasing dci's stack,
+                                                   points to last DCI to release
+                                                   or -1 if no DCI's to release */
+    uint64_t                 config_key;
 } uct_dc_mlx5_dci_pool_t;
 
 
@@ -419,6 +419,16 @@ uct_dc_mlx5_dci_pool_get_or_create(uct_dc_mlx5_iface_t *iface,
                                    const uct_dc_mlx5_dci_config_t *dci_config,
                                    uint8_t *pool_index_p);
 
+static UCS_F_ALWAYS_INLINE void uct_dc_mlx5_dci_set_invalid(uct_dc_dci_t *dci)
+{
+    dci->txwq.super.qp_num = UCT_IB_INVALID_QPN;
+}
+
+static UCS_F_ALWAYS_INLINE uint8_t uct_dc_mlx5_is_dci_valid(const uct_dc_dci_t *dci)
+{
+    return dci->txwq.super.qp_num != UCT_IB_INVALID_QPN;
+}
+
 #if HAVE_DEVX
 
 ucs_status_t uct_dc_mlx5_iface_devx_create_dct(uct_dc_mlx5_iface_t *iface);
@@ -489,8 +499,7 @@ uct_dc_mlx5_iface_dci_find(uct_dc_mlx5_iface_t *iface, struct mlx5_cqe64 *cqe)
     qp_num = ntohl(cqe->sop_drop_qpn) & UCS_MASK(UCT_IB_QPN_ORDER);
     ndci   = uct_dc_mlx5_iface_max_total_dcis(iface);
     for (i = 0; i < ndci; i++) {
-        if (iface->tx.dcis[i].initialized &&
-            (iface->tx.dcis[i].txwq.super.qp_num == qp_num)) {
+        if (iface->tx.dcis[i].txwq.super.qp_num == qp_num) {
             return i;
         }
     }
@@ -531,7 +540,7 @@ uct_dc_mlx5_iface_dci_has_outstanding(uct_dc_mlx5_iface_t *iface, int dci_index)
 {
     uct_rc_txqp_t *txqp;
 
-    if (!iface->tx.dcis[dci_index].initialized) {
+    if (!uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index])) {
         return 0;
     }
     txqp = &iface->tx.dcis[dci_index].txqp;

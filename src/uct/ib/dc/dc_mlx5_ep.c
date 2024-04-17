@@ -1317,7 +1317,7 @@ UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_ep_t)
                        "iface (%p) ep (%p) dci leak detected: dci=%d", iface,
                        self, self->dci);
 
-    if (!iface->tx.dcis[self->dci].initialized) {
+    if (!uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[self->dci])) {
         return;
     }
 
@@ -1481,7 +1481,7 @@ unsigned uct_dc_mlx5_ep_dci_release_progress(void *arg)
         ucs_assert(pool_index < iface->tx.num_dci_pools);
         dci_pool = &iface->tx.dci_pool[pool_index];
         while (dci_pool->release_stack_top >= 0) {
-            dci = dci_pool->stack[dci_pool->release_stack_top--];
+            dci = ucs_array_elem(&dci_pool->stack, dci_pool->release_stack_top--);
             ucs_assert(dci < iface->tx.ndci * iface->tx.num_dci_pools);
             ucs_assert(!uct_dc_mlx5_iface_is_dci_keepalive(iface, dci));
             uct_dc_mlx5_iface_dci_release(iface, dci);

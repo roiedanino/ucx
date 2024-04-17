@@ -250,16 +250,14 @@ KHASH_MAP_INIT_INT64(uct_dc_mlx5_fc_hash, uct_dc_mlx5_ep_fc_entry_t);
 
 enum uct_dc_mlx5_dci_config_flags {
     UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE           = UCS_BIT(0),
-    UCT_DC_MLX5_DCI_CONFIG_PORT_AFFINITY       = UCS_BIT(1),
-    UCT_DC_MLX5_DCI_CONFIG_MAX_RD_ATOMIC_IS_64 = UCS_BIT(2)
+    UCT_DC_MLX5_DCI_CONFIG_MAX_RD_ATOMIC_IS_64 = UCS_BIT(1)
 };
 
 typedef union uct_dc_mlx5_dci_config {
     struct {
-        uint8_t sl;
         uint8_t path_index;
         uint8_t flags;
-        uint8_t padding[5];
+        uint8_t padding[6];
     } key;
     uint64_t u64;
 } UCS_S_PACKED uct_dc_mlx5_dci_config_t;
@@ -410,7 +408,7 @@ ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
 ucs_status_t
 uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
                                   const uct_dc_mlx5_dci_config_t *config,
-                                  uint8_t pool_size, uint8_t *pool_index_p);
+                                  uint8_t *pool_index_p);
 
 /**
  * Checks whether dci pool config is present in dc_config_hash and returns 

@@ -1267,6 +1267,7 @@ UCS_CLASS_INIT_FUNC(uct_dc_mlx5_ep_t, uct_dc_mlx5_iface_t *iface,
     if (status != UCS_OK) {
         return status;
     }
+
     self->flags = pool_index % UCT_DC_MLX5_IFACE_MAX_DCI_POOLS;
 
     if (if_addr->flags & UCT_DC_MLX5_IFACE_ADDR_FLUSH_RKEY) {

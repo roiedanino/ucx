@@ -277,6 +277,7 @@ uct_dc_mlx5_poll_tx(uct_dc_mlx5_iface_t *iface, int poll_flags)
     uint8_t dci_index;
     struct mlx5_cqe64 *cqe;
     uint16_t hw_ci;
+    uct_dc_dci_t *dci;
     UCT_DC_MLX5_TXQP_DECL(txqp, txwq);
 
     cqe = uct_ib_mlx5_poll_cq(&iface->super.super.super,
@@ -291,9 +292,10 @@ uct_dc_mlx5_poll_tx(uct_dc_mlx5_iface_t *iface, int poll_flags)
     ucs_memory_cpu_load_fence();
 
     dci_index = uct_dc_mlx5_iface_dci_find(iface, cqe);
-    ucs_assert_always(uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index]));
-    txqp      = &iface->tx.dcis[dci_index].txqp;
-    txwq      = &iface->tx.dcis[dci_index].txwq;
+    dci       = &ucs_array_elem(&iface->tx.dcis, dci_index);
+    ucs_assert_always(uct_dc_mlx5_is_dci_valid(dci));
+    txqp      = &dci->txqp;
+    txwq      = &dci->txwq;
     hw_ci     = ntohs(cqe->wqe_counter);
 
     ucs_trace_poll("dc iface %p tx_cqe: dci[%d] txqp %p hw_ci %d",
@@ -307,8 +309,7 @@ uct_dc_mlx5_poll_tx(uct_dc_mlx5_iface_t *iface, int poll_flags)
      *       to avoid OOO sends when this is the only missing resource.
      */
     uct_dc_mlx5_iface_dci_put(iface, dci_index);
-    uct_dc_mlx5_iface_progress_pending(iface,
-                                       iface->tx.dcis[dci_index].pool_index);
+    uct_dc_mlx5_iface_progress_pending(iface, dci->pool_index);
     uct_dc_mlx5_iface_check_tx(iface);
     uct_ib_mlx5_update_db_cq_ci(&iface->super.cq[UCT_IB_DIR_TX]);
 
@@ -374,12 +375,11 @@ ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
                                           uint8_t path_index,
                                           int full_handshake)
 {
-    uct_ib_iface_t *ib_iface           = &iface->super.super.super;
-    uct_ib_mlx5_qp_attr_t attr         = {};
+    uct_ib_iface_t *ib_iface   = &iface->super.super.super;
+    uct_ib_mlx5_qp_attr_t attr = {};
+    uct_ib_mlx5_md_t *md = ucs_derived_of(ib_iface->super.md, uct_ib_mlx5_md_t);
+    uct_dc_dci_t *dci    = &ucs_array_elem(&iface->tx.dcis, dci_index);
     ucs_status_t status;
-    uct_ib_mlx5_md_t *md               = ucs_derived_of(ib_iface->super.md,
-                                                        uct_ib_mlx5_md_t);
-    uct_dc_dci_t *dci                  = &iface->tx.dcis[dci_index];
 #if HAVE_DC_DV
     uct_ib_device_t *dev               = uct_ib_iface_device(ib_iface);
     struct mlx5dv_qp_init_attr dv_attr = {};
@@ -772,26 +772,27 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
     uct_ib_mlx5_md_t *md = ucs_derived_of(iface->super.super.super.super.md,
                                           uct_ib_mlx5_md_t);
     uint8_t num_dcis     = uct_dc_mlx5_iface_max_total_dcis(iface);
+    uct_dc_dci_t *dci;
     uint8_t pool_index, dci_index;
 
     ucs_assert(num_dci_pools <= iface->tx.num_dci_pools);
 
     for (dci_index = 0; dci_index < num_dcis; dci_index++) {
-        if (!uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index])) {
+        dci = &ucs_array_elem(iface->tx.dcis, dci_index);
+        if (!uct_dc_mlx5_is_dci_valid(dci)) {
             continue;
         }
 
-        uct_rc_txqp_cleanup(&iface->super.super,
-                            &iface->tx.dcis[dci_index].txqp);
-        uct_ib_mlx5_destroy_qp(md, &iface->tx.dcis[dci_index].txwq.super);
+        uct_rc_txqp_cleanup(&iface->super.super, &dci->txqp);
+        uct_ib_mlx5_destroy_qp(md, &dci->txwq.super);
 
         if (uct_dc_mlx5_iface_is_dci_shared(iface)) {
-            ucs_arbiter_group_cleanup(&iface->tx.dcis[dci_index].arb_group);
+            ucs_arbiter_group_cleanup(&dci->arb_group);
         }
-        uct_ib_mlx5_qp_mmio_cleanup(&iface->tx.dcis[dci_index].txwq.super,
-                                    iface->tx.dcis[dci_index].txwq.reg);
+        uct_ib_mlx5_qp_mmio_cleanup(&dci->txwq.super, dci->txwq.reg);
 
-        // uct_dc_mlx5_dci_set_invalid(&iface->tx.dcis[dci_index]);
+        uct_dc_mlx5_dci_set_invalid(dci);
+        dci = NULL;
     }
 
     for (pool_index = 0; pool_index < num_dci_pools; pool_index++) {
@@ -799,7 +800,7 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
     }
 
     iface->tx.dci_counter = 0;
-    ucs_free(iface->tx.dcis);
+    ucs_array_cleanup_dynamic(&iface->tx.dcis);
 }
 
 static void
@@ -820,8 +821,8 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
                                   uint8_t *pool_index_p)
 {
     const int pool_index = iface->tx.num_dci_pools;
-    uint8_t pool_size = (config->key.flags & UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE) ?
-                                UCT_DC_MLX5_KEEPALIVE_NUM_DCIS :
+    uint8_t pool_size = //(config->key.flags & UCT_DC_MLX5_DCI_CONFIG_KEEPALIVE) ?
+                         //       UCT_DC_MLX5_KEEPALIVE_NUM_DCIS :
                                 iface->tx.ndci;
     uct_dc_mlx5_dci_pool_t *dci_pool;
     ucs_status_t status;
@@ -891,19 +892,21 @@ static ucs_status_t
 uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
                               const uct_dc_mlx5_iface_config_t *config)
 {
+    const int max_num_dcis = uct_dc_mlx5_iface_max_total_dcis(iface);
     ucs_status_t status;
     uct_dc_mlx5_dci_config_t dci_config;
     uint8_t pool_index;
     int i;
 
-    iface->tx.dcis = ucs_calloc(uct_dc_mlx5_iface_max_total_dcis(iface),
-                                sizeof(*iface->tx.dcis), "dcis");
-    if (iface->tx.dcis == NULL) {
+    ucs_array_init_dynamic(&iface->tx.dcis);
+    status = ucs_array_reserve(&iface->tx.dcis, max_num_dcis);
+    if (status != UCS_OK) {
         return UCS_ERR_NO_MEMORY;
     }
 
-    for (i = 0; i < sizeof(*iface->tx.dcis); i++) {
-        iface->tx.dcis[i].txwq.super.qp_num = UCT_IB_INVALID_QPN;
+    for (i = 0; i < max_num_dcis; ++i) {
+        ucs_array_elem(&iface->tx.dcis, i).txwq.super.qp_num =
+                UCT_IB_INVALID_QPN;
     }
 
     iface->tx.dci_counter = 0;
@@ -923,7 +926,7 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
         return status;
     }
 
-    iface->tx.bb_max = iface->tx.dcis[0].txwq.bb_max;
+    iface->tx.bb_max = ucs_array_elem(&iface->tx.dcis, 0).txwq.bb_max;
     return UCS_OK;
 }
 
@@ -967,7 +970,7 @@ static void uct_dc_mlx5_iface_vfs_refresh(uct_iface_h tl_iface)
         dci_pool = &iface->tx.dci_pool[pool_index];
         ucs_vfs_obj_add_dir(iface, dci_pool, "dci_pool/%d", pool_index);
         for (i = 0; i < iface->tx.ndci; ++i) {
-            dci = &iface->tx.dcis[dci_index];
+            dci = &ucs_array_elem(&iface->tx.dcis, dci_index);
             ucs_vfs_obj_add_dir(dci_pool, dci, "%d", dci_index);
             uct_ib_mlx5_txwq_vfs_populate(&dci->txwq, dci);
             uct_rc_txqp_vfs_populate(&dci->txqp, dci);
@@ -1866,9 +1869,9 @@ void uct_dc_mlx5_iface_reset_dci(uct_dc_mlx5_iface_t *iface, uint8_t dci_index)
     uct_ib_mlx5_txwq_t *txwq = &iface->tx.dcis[dci_index].txwq;
     ucs_status_t status;
 
-    if (!uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index])) {
-        return;
-    }
+    // if (!uct_dc_mlx5_is_dci_valid(&iface->tx.dcis[dci_index])) {
+    //     return;
+    // }
 
     ucs_debug("iface %p reset dci[%d] qpn 0x%x", iface, dci_index,
               txwq->super.qp_num);

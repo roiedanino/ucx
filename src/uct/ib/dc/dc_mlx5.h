@@ -291,11 +291,13 @@ typedef struct {
 } uct_dc_mlx5_dci_pool_t;
 
 
+UCS_ARRAY_DECLARE_TYPE(uct_dc_dci_array_t, uint8_t, uct_dc_dci_t);
+
 struct uct_dc_mlx5_iface {
     uct_rc_mlx5_iface_common_t    super;
     struct {
         /* Array of dcis */
-        uct_dc_dci_t              *dcis;
+        uct_dc_dci_array_t        dcis;
 
         uint8_t                   ndci;                        /* Number of DCIs */
 

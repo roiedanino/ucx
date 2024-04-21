@@ -173,7 +173,7 @@ UCS_TEST_P(test_dc, dcs_single) {
     status = uct_ep_am_short(m_e1->ep(0), 0, 0, NULL, 0);
     EXPECT_UCS_OK(status);
     /* dci 0 must be assigned to the ep */
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(ucs_array_elem(&iface->tx.dci_pool[0].stack, 0), ep->dci);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
     EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
 
@@ -182,7 +182,7 @@ UCS_TEST_P(test_dc, dcs_single) {
     /* after the flush dci must be released */
     EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
     EXPECT_EQ(0, iface->tx.dci_pool[0].stack_top);
-    EXPECT_EQ(0, iface->tx.dci_pool[0].stack[0]);
+    EXPECT_EQ(0, ucs_array_elem(&iface->tx.dci_pool[0].stack, 0));
 }
 
 UCS_TEST_P(test_dc, dcs_multi) {
@@ -203,7 +203,7 @@ UCS_TEST_P(test_dc, dcs_multi) {
         EXPECT_UCS_OK(status);
 
         /* dci on free LIFO must be assigned to the ep */
-        EXPECT_EQ(iface->tx.dci_pool[0].stack[i], ep->dci);
+        EXPECT_EQ(ucs_array_elem(&iface->tx.dci_pool[0].stack, i), ep->dci);
         EXPECT_EQ(i+1, iface->tx.dci_pool[0].stack_top);
         EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
     }
@@ -242,7 +242,7 @@ UCS_TEST_P(test_dc, dcs_ep_destroy) {
     EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
     send_am_messages(m_e1, 2, UCS_OK);
     /* dci 0 must be assigned to the ep */
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(ucs_array_elem(&iface->tx.dci_pool[0].stack, 0), ep->dci);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
     EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
 
@@ -270,7 +270,7 @@ UCS_TEST_P(test_dc, dcs_ep_flush_destroy) {
     status = uct_ep_am_short(m_e1->ep(0), 0, 0, NULL, 0);
     EXPECT_UCS_OK(status);
 
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(ucs_array_elem(&iface->tx.dci_pool[0].stack, 0), ep->dci);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
     EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
 

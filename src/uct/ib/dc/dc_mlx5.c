@@ -763,7 +763,7 @@ void uct_dc_mlx5_cleanup_rx(uct_rc_iface_t *rc_iface)
 static void uct_dc_mlx5_iface_dci_pool_destroy(uct_dc_mlx5_dci_pool_t *dci_pool)
 {
     ucs_arbiter_cleanup(&dci_pool->arbiter);
-    ucs_free(dci_pool->stack);
+    ucs_array_cleanup_dynamic(&dci_pool->stack);
 }
 
 static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
@@ -790,7 +790,8 @@ static void uct_dc_mlx5_iface_dcis_destroy(uct_dc_mlx5_iface_t *iface,
         }
         uct_ib_mlx5_qp_mmio_cleanup(&iface->tx.dcis[dci_index].txwq.super,
                                     iface->tx.dcis[dci_index].txwq.reg);
-        uct_dc_mlx5_dci_set_invalid(&iface->tx.dcis[dci_index]);
+
+        // uct_dc_mlx5_dci_set_invalid(&iface->tx.dcis[dci_index]);
     }
 
     for (pool_index = 0; pool_index < num_dci_pools; pool_index++) {
@@ -823,6 +824,7 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
                                 UCT_DC_MLX5_KEEPALIVE_NUM_DCIS :
                                 iface->tx.ndci;
     uct_dc_mlx5_dci_pool_t *dci_pool;
+    ucs_status_t status;
 
 
     ucs_assertv(iface->tx.num_dci_pools < UCT_DC_MLX5_IFACE_MAX_DCI_POOLS,
@@ -831,16 +833,16 @@ uct_dc_mlx5_iface_create_dci_pool(uct_dc_mlx5_iface_t *iface,
     ucs_debug("creating dci pool %u with %u QPs", pool_index, pool_size);
     uct_dc_mlx5_dump_dci_pool_config(config);
 
-    dci_pool        = &iface->tx.dci_pool[pool_index];
-    dci_pool->stack = ucs_calloc(pool_size, sizeof(*dci_pool->stack),
-                                 "dci pool stack");
-    if (dci_pool->stack == NULL) {
+    dci_pool = &iface->tx.dci_pool[pool_index];
+    ucs_array_init_dynamic(&dci_pool->stack);
+    status = ucs_array_reserve(&dci_pool->stack, pool_size);
+    if (status != UCS_OK) {
         ucs_error("failed to allocate dci_pool stack");
         return UCS_ERR_NO_MEMORY;
     }
 
     ucs_arbiter_init(&dci_pool->arbiter);
-    ucs_array_reserve(&dci_pool->stack, pool_size);
+
     dci_pool->stack_top         = 0;
     dci_pool->release_stack_top = -1;
     dci_pool->config_key        = config->u64;
@@ -892,11 +894,16 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
     ucs_status_t status;
     uct_dc_mlx5_dci_config_t dci_config;
     uint8_t pool_index;
+    int i;
 
     iface->tx.dcis = ucs_calloc(uct_dc_mlx5_iface_max_total_dcis(iface),
                                 sizeof(*iface->tx.dcis), "dcis");
     if (iface->tx.dcis == NULL) {
         return UCS_ERR_NO_MEMORY;
+    }
+
+    for (i = 0; i < sizeof(*iface->tx.dcis); i++) {
+        iface->tx.dcis[i].txwq.super.qp_num = UCT_IB_INVALID_QPN;
     }
 
     iface->tx.dci_counter = 0;

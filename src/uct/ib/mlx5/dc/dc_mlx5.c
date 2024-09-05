@@ -29,11 +29,12 @@
 
 
 const char *uct_dc_tx_policy_names[] = {
-    [UCT_DC_TX_POLICY_DCS]       = "dcs",
-    [UCT_DC_TX_POLICY_DCS_QUOTA] = "dcs_quota",
-    [UCT_DC_TX_POLICY_RAND]      = "rand",
-    [UCT_DC_TX_POLICY_HW_DCS]    = "hw_dcs",
-    [UCT_DC_TX_POLICY_LAST]      = NULL
+    [UCT_DC_TX_POLICY_DCS]        = "dcs",
+    [UCT_DC_TX_POLICY_DCS_QUOTA]  = "dcs_quota",
+    [UCT_DC_TX_POLICY_DCS_HYBRID] = "dcs_hybrid",
+    [UCT_DC_TX_POLICY_RAND]       = "rand",
+    [UCT_DC_TX_POLICY_HW_DCS]     = "hw_dcs",
+    [UCT_DC_TX_POLICY_LAST]       = NULL
 };
 
 static const char *uct_dct_affinity_policy_names[] = {
@@ -361,7 +362,8 @@ static void uct_ib_mlx5dv_dci_qp_init_attr(uct_ib_qp_init_attr_t *qp_attr,
 }
 
 ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
-                                          uint8_t dci_index, int connect)
+                                          uint8_t dci_index, int connect,
+                                          uint8_t num_dci_channels)
 {
     uct_ib_iface_t *ib_iface   = &iface->super.super.super;
     uct_ib_mlx5_qp_attr_t attr = {};
@@ -386,7 +388,7 @@ ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
                                            UCT_DC_MLX5_IFACE_FLAG_DCI_FULL_HANDSHAKE;
         attr.rdma_wr_disabled            = (iface->flags & UCT_DC_MLX5_IFACE_FLAG_DISABLE_PUT) &&
                                            (md->flags & UCT_IB_MLX5_MD_FLAG_NO_RDMA_WR_OPTIMIZED);
-        attr.log_num_dci_stream_channels = ucs_ilog2(iface->tx.num_dci_channels);
+        attr.log_num_dci_stream_channels = ucs_ilog2(num_dci_channels);
         status = uct_ib_mlx5_devx_create_qp(ib_iface,
                                             &iface->super.cq[UCT_IB_DIR_TX],
                                             &iface->super.cq[UCT_IB_DIR_RX],
@@ -893,7 +895,7 @@ uct_dc_mlx5_iface_dcis_create(uct_dc_mlx5_iface_t *iface,
 
     ucs_array_length(&iface->tx.dcis) = 0;
 
-    status = uct_dc_mlx5_iface_create_dci(iface, 0, 0);
+    status = uct_dc_mlx5_iface_create_dci(iface, 0, 0, 1);
     if (status != UCS_OK) {
         return status;
     }
@@ -1645,7 +1647,8 @@ static UCS_CLASS_INIT_FUNC(uct_dc_mlx5_iface_t, uct_md_h tl_md, uct_worker_h wor
         return UCS_ERR_INVALID_PARAM;
     }
 
-    if (uct_dc_mlx5_iface_is_hw_dcs(self)) {
+    if (uct_dc_mlx5_iface_is_hw_dcs(self) ||
+        uct_dc_mlx5_iface_is_hybrid(self)) {
         /* Calculate num_dci_channels: select minimum from requested by runtime
          * and supported by HCA, must be power of two */
         num_dci_channels          = ucs_roundup_pow2(config->num_dci_channels);

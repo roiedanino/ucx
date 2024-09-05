@@ -1283,7 +1283,8 @@ UCS_CLASS_CLEANUP_FUNC(uct_dc_mlx5_ep_t)
     uct_dc_mlx5_ep_fc_cleanup(self);
 
     if ((self->dci == UCT_DC_MLX5_EP_NO_DCI) ||
-        uct_dc_mlx5_iface_is_dci_shared(iface)) {
+        uct_dc_mlx5_iface_is_dci_shared(iface) ||
+        uct_dc_mlx5_is_hw_dci(iface, self->dci)) {
         return;
     }
 
@@ -1395,7 +1396,11 @@ uct_dc_mlx5_iface_dci_do_pending_wait(ucs_arbiter_t *arbiter,
                 uct_dc_mlx5_iface_dci(iface, ep->dci)->pool_index);
 
     if (!uct_dc_mlx5_iface_dci_can_alloc_or_create(iface, pool_index)) {
-        return UCS_ARBITER_CB_RESULT_STOP;
+        if (uct_dc_mlx5_set_ep_to_hw_dcs(iface, ep) == UCS_OK) {
+            return UCS_ARBITER_CB_RESULT_DESCHED_GROUP;
+        } else {
+            return UCS_ARBITER_CB_RESULT_STOP;
+        }
     }
 
     uct_dc_mlx5_iface_dci_alloc(iface, ep);

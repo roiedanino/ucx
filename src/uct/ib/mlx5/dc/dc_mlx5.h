@@ -147,6 +147,7 @@ typedef enum {
     /* Policies with dedicated DCI per active connection */
     UCT_DC_TX_POLICY_DCS,
     UCT_DC_TX_POLICY_DCS_QUOTA,
+    UCT_DC_TX_POLICY_DCS_HYBRID,
     /* Policies with shared DCI */
     UCT_DC_TX_POLICY_SHARED_FIRST,
     UCT_DC_TX_POLICY_RAND = UCT_DC_TX_POLICY_SHARED_FIRST,
@@ -389,7 +390,8 @@ void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
 void uct_dc_mlx5_iface_reset_dci(uct_dc_mlx5_iface_t *iface, uint8_t dci_index);
 
 ucs_status_t uct_dc_mlx5_iface_create_dci(uct_dc_mlx5_iface_t *iface,
-                                          uint8_t dci_index, int connect);
+                                          uint8_t dci_index, int connect,
+                                          uint8_t num_dci_channels);
 
 ucs_status_t uct_dc_mlx5_iface_resize_and_fill_dcis(uct_dc_mlx5_iface_t *iface,
                                                     uint16_t size);

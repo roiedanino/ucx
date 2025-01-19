@@ -448,6 +448,12 @@ typedef struct uct_ib_mlx5_md {
         uint8_t              rc;
         uint8_t              dc;
     } dp_ordering_cap;
+
+    struct {
+        uint8_t supported_tls;
+        uint16_t max_message_size_stride;
+        uint32_t max_message_size_bytes;
+    } smbrwq;
 } uct_ib_mlx5_md_t;
 
 

@@ -1560,9 +1560,10 @@ struct uct_ib_mlx5_qpc_ext_bits {
     uint8_t         delay_drop_en[0x1];
     uint8_t         vl15[0x1];
     uint8_t         mmo[0x1];
+    uint8_t         error_syndrome_origin[0x1];
     uint8_t         path_select_obj_id_valid[0x1];
     uint8_t         receive_send_cqe_granularity[0x3];
-    uint8_t         reserved_at_7[0x6];
+    uint8_t         reserved_at_7[0x8];
     uint8_t         dci_stream_channel_id[0x10];
 
     uint8_t         qos_queue_group_id_requester[0x20];

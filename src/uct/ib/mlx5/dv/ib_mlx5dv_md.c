@@ -2291,6 +2291,9 @@ ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
             goto err_lru_cleanup;
         }
     }
+    else {
+        ucs_info("adv_rdma_cap is not supported");
+    }
 
     if (UCT_IB_MLX5DV_GET(cmd_hca_cap, cap, log_max_msg) !=
         UCT_IB_MLX5_LOG_MAX_MSG_SIZE) {

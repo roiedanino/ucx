@@ -1823,13 +1823,13 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
         goto no_odp;
     }
 
-    /* odp.enable is either yes or try - disable DevX objects for ODPv1*/
+    /* User explicitly requested ODP - disable DevX objects for ODPv1 */
     if ((md_config->ext.odp.enable != UCS_AUTO) && (version == 1)) {
         md->flags &= ~UCT_IB_MLX5_MD_FLAG_DEVX_OBJS_MASK;
         ucs_debug("%s: DevX objects are disabled as ODPv1 was explicitly "
                   "requested by user configuration",
                   uct_ib_device_name(&md->super.dev));
-    } 
+    }
 
     md->super.gva_mem_types          = md_config->ext.odp.mem_types;
     md->super.reg_nonblock_mem_types = md_config->ext.odp.mem_types;

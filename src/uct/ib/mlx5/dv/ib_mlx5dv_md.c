@@ -1811,7 +1811,8 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
         version = 2;
     } else {
         if (md_config->ext.odp.enable != UCS_AUTO) {
-            md_config->devx_objs = 0; /* Disable DevX objects */
+            /* Disable DevX objects */
+            md->flags &= ~UCT_IB_MLX5_MD_FLAG_DEVX_OBJS_MASK;
             ucs_debug("%s: DevX objects are disabled as ODPv1 was explicitly "
                       "requested by user configuration",
                       uct_ib_device_name(&md->super.dev));
@@ -1841,14 +1842,14 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
     }
 
     if (!md->super.relaxed_order) {
-        return;
+        return UCS_OK;
     }
 
     mr = ibv_reg_mr(md->super.pd, NULL, SIZE_MAX,
                     UCT_IB_MEM_ACCESS_FLAGS | IBV_ACCESS_RELAXED_ORDERING |
                     IBV_ACCESS_ON_DEMAND);
     if (mr == NULL) {
-        return;
+        return UCS_OK;
     }
 
     ibv_dereg_mr(mr);

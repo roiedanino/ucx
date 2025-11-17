@@ -1275,7 +1275,7 @@ ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr
         *is_odp_supported_p = 0;
     }
 
-    if ((md->config.odp.enable == UCS_YES) && !*is_odp_supported_p) {
+    if ((md_config->ext.odp.enable == UCS_YES) && !*is_odp_supported_p) {
         return UCS_ERR_UNSUPPORTED;
     } 
     

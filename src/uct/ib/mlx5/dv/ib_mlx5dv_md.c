@@ -1787,6 +1787,26 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
         goto no_odp;
     }
 
+    if (UCT_IB_MLX5DV_GET(query_hca_cap_out, out,
+                          capability.odp_cap.mem_page_fault)) {
+        odp_cap = UCT_IB_MLX5DV_ADDR_OF(
+                query_hca_cap_out, out,
+                capability.odp_cap.memory_page_fault_scheme_cap);
+        version = 2;
+    } else {
+        if ((md_config->devx_objs &
+            (UCS_BIT(UCT_IB_DEVX_OBJ_RCQP) | UCS_BIT(UCT_IB_DEVX_OBJ_DCI))) &&
+            (md_config->ext.odp.enable == UCS_AUTO)) {
+            reason = "version 1 is not supported for DevX QP";
+            goto no_odp;
+        }
+
+        odp_cap = UCT_IB_MLX5DV_ADDR_OF(
+                query_hca_cap_out, out,
+                capability.odp_cap.transport_page_fault_scheme_cap);
+        version = 1;
+    }
+
     if (!UCT_IB_MLX5DV_GET(odp_scheme_cap, odp_cap, ud_odp_caps.send) ||
         !UCT_IB_MLX5DV_GET(odp_scheme_cap, odp_cap, rc_odp_caps.send) ||
         !UCT_IB_MLX5DV_GET(odp_scheme_cap, odp_cap, rc_odp_caps.write) ||
@@ -1803,31 +1823,13 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
         goto no_odp;
     }
 
-    if (UCT_IB_MLX5DV_GET(query_hca_cap_out, out,
-                          capability.odp_cap.mem_page_fault)) {
-        odp_cap = UCT_IB_MLX5DV_ADDR_OF(
-                query_hca_cap_out, out,
-                capability.odp_cap.memory_page_fault_scheme_cap);
-        version = 2;
-    } else {
-        if (md_config->ext.odp.enable != UCS_AUTO) {
-            /* Disable DevX objects */
-            md->flags &= ~UCT_IB_MLX5_MD_FLAG_DEVX_OBJS_MASK;
-            ucs_debug("%s: DevX objects are disabled as ODPv1 was explicitly "
-                      "requested by user configuration",
-                      uct_ib_device_name(&md->super.dev));
-        }
-        if (md_config->devx_objs &
-            (UCS_BIT(UCT_IB_DEVX_OBJ_RCQP) | UCS_BIT(UCT_IB_DEVX_OBJ_DCI))) {
-            reason = "version 1 is not supported for DevX QP";
-            goto no_odp;
-        }
-
-        odp_cap = UCT_IB_MLX5DV_ADDR_OF(
-                query_hca_cap_out, out,
-                capability.odp_cap.transport_page_fault_scheme_cap);
-        version = 1;
-    }
+    /* odp.enable is either yes or try - disable DevX objects for ODPv1*/
+    if ((md_config->ext.odp.enable != UCS_AUTO) && (version == 1)) {
+        md->flags &= ~UCT_IB_MLX5_MD_FLAG_DEVX_OBJS_MASK;
+        ucs_debug("%s: DevX objects are disabled as ODPv1 was explicitly "
+                  "requested by user configuration",
+                  uct_ib_device_name(&md->super.dev));
+    } 
 
     md->super.gva_mem_types          = md_config->ext.odp.mem_types;
     md->super.reg_nonblock_mem_types = md_config->ext.odp.mem_types;

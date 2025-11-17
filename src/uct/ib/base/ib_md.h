@@ -92,9 +92,10 @@ typedef struct uct_ib_md_ext_config {
     int                      enable_indirect_atomic; /** Enable indirect atomic */
 
     struct {
-        int                  prefetch;     /**< Auto-prefetch non-blocking memory
+        int                      prefetch;     /**< Auto-prefetch non-blocking memory
                                                 registrations / allocations */
-        uint64_t             mem_types;    /**< Supported mem types for ODP */
+        uint64_t                 mem_types;    /**< Supported mem types for ODP */
+        ucs_ternary_auto_value_t enable;       /**< Enable ODP support */
     } odp;
 
     unsigned long            gid_index;    /**< IB GID index to use */
@@ -389,7 +390,12 @@ ucs_status_t uct_ib_mem_prefetch(uct_ib_md_t *md, uct_ib_mem_t *ib_memh,
 void uct_ib_md_ece_check(uct_ib_md_t *md);
 
 /* Check if IB MD supports nonblocking registration */
-int uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr);
+int uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr,
+                               const uct_ib_md_config_t *md_config,
+                               int *is_odp_supported_p);
+
+ucs_status_t
+uct_ib_md_check_odp(uct_ib_md_t *md, const uct_ib_md_config_t *md_config);
 
 ucs_status_t
 uct_ib_md_handle_mr_list_mt(uct_ib_md_t *md, void *address, size_t length,

@@ -94,7 +94,7 @@ typedef struct uct_ib_mlx5_dbrec_page {
 
 /* Should be called after DDP is initialized */
 static ucs_status_t
-uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr, 
+uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr,
                                 const uct_ib_md_config_t *md_config,
                                 int *is_odp_supported_p)
 {
@@ -110,7 +110,7 @@ uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr,
     if ((md->dp_ordering_cap_devx.rc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
         (md->dp_ordering_cap_devx.dc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
         md->ddp_support_dv.rc || md->ddp_support_dv.dc) {
-        *reason_ptr = "ODP does not work with DDP";
+        *reason_ptr         = "ODP does not work with DDP";
         *is_odp_supported_p = 0;
         return UCS_OK;
     }
@@ -1740,9 +1740,9 @@ static ucs_mpool_ops_t uct_ib_mlx5_dbrec_ops = {
     .obj_str       = NULL
 };
 
-static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
-                                               const uct_ib_md_config_t *md_config,
-                                               void *cap)
+static ucs_status_t
+uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
+                           const uct_ib_md_config_t *md_config, void *cap)
 {
     char out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
     char in[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_in)]   = {};
@@ -1795,7 +1795,7 @@ static ucs_status_t uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
         version = 2;
     } else {
         if ((md_config->devx_objs &
-            (UCS_BIT(UCT_IB_DEVX_OBJ_RCQP) | UCS_BIT(UCT_IB_DEVX_OBJ_DCI))) &&
+             (UCS_BIT(UCT_IB_DEVX_OBJ_RCQP) | UCS_BIT(UCT_IB_DEVX_OBJ_DCI))) &&
             (md_config->ext.odp.enable == UCS_AUTO)) {
             reason = "version 1 is not supported for DevX QP";
             goto no_odp;

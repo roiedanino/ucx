@@ -1259,7 +1259,8 @@ static void uct_ib_md_check_dmabuf(uct_ib_md_t *md)
 #endif
 }
 
-ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr,
+ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md,
+                                        const char **reason_ptr,
                                         const uct_ib_md_config_t *md_config,
                                         int *is_odp_supported_p)
 {
@@ -1277,10 +1278,10 @@ ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr
 
     if ((md_config->ext.odp.enable == UCS_YES) && !*is_odp_supported_p) {
         return UCS_ERR_UNSUPPORTED;
-    } 
-    
+    }
+
     if (md_config->ext.odp.enable == UCS_NO) {
-        *reason_ptr = "of user configuration";
+        *reason_ptr         = "of user configuration";
         *is_odp_supported_p = 0;
     }
 
@@ -1295,7 +1296,8 @@ uct_ib_md_check_odp(uct_ib_md_t *md, const uct_ib_md_config_t *md_config)
     int is_odp_supported;
     ucs_status_t status;
 
-    status = uct_ib_md_check_odp_common(md, &reason, md_config, &is_odp_supported);
+    status = uct_ib_md_check_odp_common(md, &reason, md_config,
+                                        &is_odp_supported);
     if (status != UCS_OK) {
         ucs_error("%s: ODP is disabled because %s", device_name, reason);
         return status;

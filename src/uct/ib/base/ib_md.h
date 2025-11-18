@@ -390,10 +390,10 @@ ucs_status_t uct_ib_mem_prefetch(uct_ib_md_t *md, uct_ib_mem_t *ib_memh,
 void uct_ib_md_ece_check(uct_ib_md_t *md);
 
 /* Check if IB MD supports nonblocking registration */
-ucs_status_t 
-uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr,
-                           const uct_ib_md_config_t *md_config,
-                           int *is_odp_supported_p);
+ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md,
+                                        const char **reason_ptr,
+                                        const uct_ib_md_config_t *md_config,
+                                        int *is_odp_supported_p);
 
 ucs_status_t
 uct_ib_md_check_odp(uct_ib_md_t *md, const uct_ib_md_config_t *md_config);

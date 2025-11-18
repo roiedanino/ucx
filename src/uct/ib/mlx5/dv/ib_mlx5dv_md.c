@@ -29,32 +29,6 @@ static uint32_t uct_ib_mlx5_flush_rkey_make()
     return ((getpid() & 0xff) << 8) | UCT_IB_MD_INVALID_FLUSH_RKEY;
 }
 
-/* Should be called after DDP is initialized */
-static ucs_status_t
-uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr, 
-                                const uct_ib_md_config_t *md_config,
-                                int *is_odp_supported_p)
-{
-    ucs_status_t status;
-
-    status = uct_ib_md_check_odp_common(&md->super, reason_ptr, md_config,
-                                        is_odp_supported_p);
-    if (status != UCS_OK) {
-        return status;
-    }
-
-    /* Issue 4238670 */
-    if ((md->dp_ordering_cap_devx.rc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
-        (md->dp_ordering_cap_devx.dc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
-        md->ddp_support_dv.rc || md->ddp_support_dv.dc) {
-        *reason_ptr = "ODP does not work with DDP";
-        *is_odp_supported_p = 0;
-        return UCS_OK;
-    }
-
-    return UCS_OK;
-}
-
 static void uct_ib_mlx5dv_check_direct_nic(struct ibv_context *ctx,
                                            uct_ib_device_t *dev,
                                            uct_ib_mlx5_md_t *md,
@@ -117,6 +91,32 @@ typedef struct uct_ib_mlx5_dbrec_page {
     uct_ib_mlx5_devx_umem_t    mem;
 } uct_ib_mlx5_dbrec_page_t;
 
+
+/* Should be called after DDP is initialized */
+static ucs_status_t
+uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr, 
+                                const uct_ib_md_config_t *md_config,
+                                int *is_odp_supported_p)
+{
+    ucs_status_t status;
+
+    status = uct_ib_md_check_odp_common(&md->super, reason_ptr, md_config,
+                                        is_odp_supported_p);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    /* Issue 4238670 */
+    if ((md->dp_ordering_cap_devx.rc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
+        (md->dp_ordering_cap_devx.dc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
+        md->ddp_support_dv.rc || md->ddp_support_dv.dc) {
+        *reason_ptr = "ODP does not work with DDP";
+        *is_odp_supported_p = 0;
+        return UCS_OK;
+    }
+
+    return UCS_OK;
+}
 
 static size_t uct_ib_mlx5_calc_mkey_inlen(int list_size)
 {

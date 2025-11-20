@@ -45,6 +45,7 @@ static const char *uct_ib_devx_objs[] = {
     [UCT_IB_DEVX_OBJ_DCSRQ] = "dcsrq",
     [UCT_IB_DEVX_OBJ_DCI]   = "dci",
     [UCT_IB_DEVX_OBJ_CQ]    = "cq",
+    [UCT_IB_DEVX_OBJ_AUTO]  = "auto",
     NULL
 };
 
@@ -175,14 +176,6 @@ ucs_config_field_t uct_ib_md_config_table[] = {
     {"XGVMI_UMR_ENABLE", "y",
      "Enable UMR optimization for XGVMI mkeys export/import.",
      ucs_offsetof(uct_ib_md_config_t, xgvmi_umr_enable), UCS_CONFIG_TYPE_BOOL},
-
-     {"ODP_ENABLE", "auto",
-      "Enable ODP support\n"
-      "auto - enable ODP support unless it's ODPv1 and DevX objects contains QP.\n"
-      "y    - enable ODP support, fail if it's not supported, disable DevX objects for ODPv1.\n"
-      "n    - disable ODP support.\n"
-      "try  - enable ODP if supported, disable DevX objects for ODPv1.",
-      ucs_offsetof(uct_ib_md_config_t, ext.odp.enable), UCS_CONFIG_TYPE_TERNARY_AUTO},
 
     {"ODP_MEM_TYPES", "host",
      "Advertise non-blocking registration for these memory types, when ODP is "
@@ -1259,58 +1252,33 @@ static void uct_ib_md_check_dmabuf(uct_ib_md_t *md)
 #endif
 }
 
-ucs_status_t uct_ib_md_check_odp_common(uct_ib_md_t *md,
-                                        const char **reason_ptr,
-                                        const uct_ib_md_config_t *md_config,
-                                        int *is_odp_supported_p)
+int uct_ib_md_check_odp_common(uct_ib_md_t *md, const char **reason_ptr)
 {
-    *is_odp_supported_p = 1;
-
     if (IBV_ACCESS_ON_DEMAND == 0) {
         *reason_ptr = "IBV_ACCESS_ON_DEMAND is not supported";
-        *is_odp_supported_p = 0;
+        return 0;
     }
 
     if (!IBV_DEVICE_HAS_ODP(&md->dev)) {
         *reason_ptr = "device does not support IBV_ACCESS_ON_DEMAND";
-        *is_odp_supported_p = 0;
+        return 0;
     }
 
-    if ((md_config->ext.odp.enable == UCS_YES) && !*is_odp_supported_p) {
-        return UCS_ERR_UNSUPPORTED;
-    }
-
-    if (md_config->ext.odp.enable == UCS_NO) {
-        *reason_ptr         = "of user configuration";
-        *is_odp_supported_p = 0;
-    }
-
-    return UCS_OK;
+    return 1;
 }
 
-ucs_status_t
-uct_ib_md_check_odp(uct_ib_md_t *md, const uct_ib_md_config_t *md_config)
+void uct_ib_md_check_odp(uct_ib_md_t *md, const uct_ib_md_config_t *md_config)
 {
     const char *device_name = uct_ib_device_name(&md->dev);
     const char *reason;
-    int is_odp_supported;
-    ucs_status_t status;
 
-    status = uct_ib_md_check_odp_common(md, &reason, md_config,
-                                        &is_odp_supported);
-    if (status != UCS_OK) {
-        ucs_error("%s: ODP is disabled because %s", device_name, reason);
-        return status;
-    }
-
-    if (!is_odp_supported) {
+    if (!uct_ib_md_check_odp_common(md, &reason)) {
         ucs_debug("%s: ODP is disabled because %s", device_name, reason);
-        return UCS_OK;
+        return;
     }
 
     md->reg_nonblock_mem_types = md_config->ext.odp.mem_types;
     ucs_debug("%s: ODP is supported", device_name);
-    return UCS_OK;
 }
 
 ucs_status_t uct_ib_md_open_common(uct_ib_md_t *md,
@@ -1577,10 +1545,7 @@ static ucs_status_t uct_ib_verbs_md_open(struct ibv_device *ibv_device,
 
     uct_ib_md_ece_check(md);
     uct_ib_md_parse_relaxed_order(md, md_config, 0);
-    status = uct_ib_md_check_odp(md, md_config);
-    if (status != UCS_OK) {
-        goto err_device_config_release;
-    }
+    uct_ib_md_check_odp(md, md_config);
 
     *p_md = md;
     return UCS_OK;

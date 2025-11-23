@@ -94,7 +94,7 @@ typedef struct uct_ib_mlx5_dbrec_page {
 
 /* Should be called after DDP is initialized */
 static int
-uct_ib_mlx5_md_check_odp_common(uct_ib_mlx5_md_t *md, const char **reason_ptr,
+uct_ib_mlx5_md_check_odp_common(const uct_ib_mlx5_md_t *md, const char **reason_ptr,
                                 const uct_ib_md_config_t *md_config)
 {
     int is_odp_supported = uct_ib_md_check_odp_common(&md->super, reason_ptr);
@@ -1733,7 +1733,7 @@ static ucs_mpool_ops_t uct_ib_mlx5_dbrec_ops = {
 };
 
 static void 
-uct_ib_mlx5_devx_check_odp(uct_ib_mlx5_md_t *md,
+uct_ib_mlx5_devx_check_odp(const uct_ib_mlx5_md_t *md,
                            const uct_ib_md_config_t *md_config, void *cap,
                            int *odp_version_p)
 {
@@ -2576,7 +2576,6 @@ ucs_status_t uct_ib_mlx5_devx_md_open_common(const char *name, size_t size,
 
     dev->flags          |= UCT_IB_DEVICE_FLAG_MLX5_PRM;
     md->flags           |= UCT_IB_MLX5_MD_FLAG_DEVX;
-
 
     devx_objs = md_config->devx_objs;
     if (md_config->devx_objs & UCS_BIT(UCT_IB_DEVX_OBJ_AUTO)) {

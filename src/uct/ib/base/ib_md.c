@@ -1151,15 +1151,14 @@ uct_ib_md_open(uct_component_t *component, const char *md_name,
     int num_devices, fork_init = 0;
     const uct_ib_plugin_info_t *plugin_info;
 
-    ucs_load_module_external("uct_ib", "plugin",
-                             &uct_ib_plugin_load_once,
+    ucs_load_module_external("uct_ib", "plugin", &uct_ib_plugin_load_once,
                              UCS_MODULE_LOAD_FLAG_GLOBAL);
 
     status = ucx_plugin_init();
     if (status != UCS_OK) {
-        ucs_debug("failed to initialize UCX IB plugin: %s", ucs_status_string(status));
-    }
-    else {
+        ucs_debug("failed to initialize UCX IB plugin: %s",
+                  ucs_status_string(status));
+    } else {
         plugin_info = ucx_plugin_get_info();
         ucs_assert(plugin_info != NULL);
         ucs_info("UCX IB plugin loaded: %s v%ld.%ld.%ld - %s",

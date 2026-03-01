@@ -122,7 +122,8 @@ static void ucs_module_loader_init_paths()
         ucs_assert(ucs_module_loader_state.num_srch_paths == 0);
         ucs_module_loader_add_dl_dir();
         ucs_module_loader_add_install_dir();
-        ucs_assert(ucs_module_loader_state.num_srch_paths <= UCS_MODULE_SRCH_PATH_MAX);
+        ucs_assert(ucs_module_loader_state.num_srch_paths <=
+                   UCS_MODULE_SRCH_PATH_MAX);
     }
 }
 

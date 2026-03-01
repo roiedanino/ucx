@@ -837,10 +837,10 @@ static int ucs_config_sscanf_array_delim(const char *buf, void *dest,
         return 0;
     }
 
-    saveptr = NULL;
-    token = strtok_r(str_dup, delim, &saveptr);
+    saveptr    = NULL;
+    token      = strtok_r(str_dup, delim, &saveptr);
     temp_field = ucs_calloc(UCS_CONFIG_ARRAY_MAX, array->elem_size, "config array");
-    i = 0;
+    i          = 0;
     while (token != NULL) {
         ret = array->parser.read(token, (char*)temp_field + i * array->elem_size,
                                  array->parser.arg);
@@ -900,14 +900,14 @@ static int ucs_config_sprintf_array_delim(char *buf, size_t max,
     return 1;
 }
 
-int ucs_config_sprintf_array(char *buf, size_t max,
-                             const void *src, const void *arg)
+int ucs_config_sprintf_array(char *buf, size_t max, const void *src,
+                             const void *arg)
 {
     return ucs_config_sprintf_array_delim(buf, max, src, arg, ',');
 }
 
-int ucs_config_sprintf_path_array(char *buf, size_t max,
-                                  const void *src, const void *arg)
+int ucs_config_sprintf_path_array(char *buf, size_t max, const void *src,
+                                  const void *arg)
 {
     return ucs_config_sprintf_array_delim(buf, max, src, arg, ':');
 }

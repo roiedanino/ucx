@@ -43,7 +43,7 @@ void ucx_plugin_cleanup(void);
  *
  * @return Pointer to plugin information structure, or NULL if plugin is not available
  */
-const uct_ib_plugin_info_t* ucx_plugin_get_info(void);
+const uct_ib_plugin_info_t *ucx_plugin_get_info(void);
 
 #ifdef __cplusplus
 }

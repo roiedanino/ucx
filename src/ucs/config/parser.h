@@ -265,7 +265,8 @@ ucs_status_t ucs_config_clone_range_spec(const void *src, void *dest, const void
 int ucs_config_sscanf_array(const char *buf, void *dest, const void *arg);
 int ucs_config_sprintf_array(char *buf, size_t max, const void *src, const void *arg);
 int ucs_config_sscanf_path_array(const char *buf, void *dest, const void *arg);
-int ucs_config_sprintf_path_array(char *buf, size_t max, const void *src, const void *arg);
+int ucs_config_sprintf_path_array(char *buf, size_t max, const void *src,
+                                  const void *arg);
 ucs_status_t ucs_config_clone_array(const void *src, void *dest, const void *arg);
 void ucs_config_release_array(void *ptr, const void *arg);
 void ucs_config_help_array(char *buf, size_t max, const void *arg);

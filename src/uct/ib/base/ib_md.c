@@ -1157,7 +1157,7 @@ uct_ib_md_open(uct_component_t *component, const char *md_name,
 
     status = ucx_plugin_init();
     if (status != UCS_OK) {
-        ucs_warn("failed to initialize UCX IB plugin: %s", ucs_status_string(status));
+        ucs_debug("failed to initialize UCX IB plugin: %s", ucs_status_string(status));
     }
     else {
         plugin_info = ucx_plugin_get_info();

@@ -1334,6 +1334,9 @@ ucp_rkey_compare(ucp_worker_h worker, ucp_rkey_h rkey1, ucp_rkey_h rkey2,
         return UCS_ERR_INVALID_PARAM;
     }
 
+    UCS_STATS_UPDATE_COUNTER(worker->stats,
+                             UCP_WORKER_STAT_RKEY_DEDUP_COMPARE, 1);
+
     /* Matching config indices means that the possibly unrelated remote MDs all
      * resolve to the same local components.
      */
@@ -1369,6 +1372,11 @@ ucp_rkey_compare(ucp_worker_h worker, ucp_rkey_h rkey1, ucp_rkey_h rkey2,
         }
 
         rkey_index++;
+    }
+
+    if ((status == UCS_OK) && (*result == 0)) {
+        UCS_STATS_UPDATE_COUNTER(worker->stats,
+                                 UCP_WORKER_STAT_RKEY_DEDUP_MATCH, 1);
     }
 
     return status;

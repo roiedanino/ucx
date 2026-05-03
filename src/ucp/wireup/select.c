@@ -2293,6 +2293,7 @@ ucp_wireup_select_wireup_msg_lane(ucp_worker_h worker,
                                   ucp_lane_index_t am_lane)
 {
     ucp_context_h context          = worker->context;
+    ucp_lane_index_t p2p_lane      = UCP_NULL_LANE;
     ucp_lane_index_t aux_lane      = UCP_NULL_LANE;
     ucp_wireup_criteria_t criteria = {0};
     size_t max_seg_size            = 0;
@@ -2337,17 +2338,22 @@ ucp_wireup_select_wireup_msg_lane(ucp_worker_h worker,
             ucp_wireup_check_flags(resource,
                                    address_list[addr_index].iface_attr.flags,
                                    criteria.remote_event_flags, criteria.title,
-                                   ucp_wireup_peer_flags, NULL, 0)) ||
-            (ucp_worker_is_tl_p2p(worker, rsc_index) &&
-            !ucp_worker_is_tl_device(worker, rsc_index))) {
+                                   ucp_wireup_peer_flags, NULL, 0))) {
             if (seg_size > max_seg_size) {
                 max_seg_size  = seg_size;
                 aux_lane = lane;
             }
+        } else if (ucp_worker_is_tl_p2p(worker, rsc_index) &&
+                   !ucp_worker_is_tl_device(worker, rsc_index)) {
+            p2p_lane = lane;
         }
     }
 
-    return aux_lane;
+    if (aux_lane != UCP_NULL_LANE) {
+        return aux_lane;
+    }
+
+    return p2p_lane;
 }
 
 static UCS_F_NOINLINE void

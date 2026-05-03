@@ -1066,6 +1066,24 @@ static double ucp_wireup_aux_score_func(const ucp_worker_iface_t *wiface,
              wiface->attr.overhead + remote_addr->iface_attr.overhead));
 }
 
+static size_t
+ucp_wireup_aux_seg_size(const uct_iface_attr_t *local_iface_attr,
+                        const ucp_address_entry_t *remote_addr)
+{
+    return ucs_min(ucp_address_iface_seg_size(local_iface_attr),
+                   remote_addr->iface_attr.seg_size);
+}
+
+static double
+ucp_wireup_aux_seg_size_score_func(const ucp_worker_iface_t *wiface,
+                                   const uct_md_attr_v2_t *md_attr,
+                                   const ucp_unpacked_address_t *unpacked_addr,
+                                   const ucp_address_entry_t *remote_addr,
+                                   int is_prioritized_ep, void *arg)
+{
+    return ucp_wireup_aux_seg_size(&wiface->attr, remote_addr);
+}
+
 static void ucp_wireup_fill_aux_criteria(ucp_wireup_criteria_t *criteria,
                                          unsigned ep_init_flags,
                                          uint64_t mandatory_flags)
@@ -2320,10 +2338,10 @@ ucp_wireup_select_wireup_msg_lane(ucp_worker_h worker,
         addr_index = lane_descs[lane].addr_index;
         resource   = &context->tl_rscs[rsc_index].tl_rsc;
         attrs      = ucp_worker_iface_get_attr(worker, rsc_index);
-        seg_size   = ucp_address_iface_seg_size(attrs);
+        seg_size   = ucp_wireup_aux_seg_size(attrs, &address_list[addr_index]);
 
         /* Select a lane which satisfies the wireup criteria and with the
-         * highest seg_size and use it for wireup.
+         * highest effective seg_size and use it for wireup.
          * If none found, use p2p transport */
         if ((ucp_wireup_check_select_flags(resource, attrs->cap.flags,
                                           &criteria.local_iface_flags,
@@ -2900,6 +2918,7 @@ ucp_wireup_select_aux_transport(ucp_ep_h ep, unsigned ep_init_flags,
     /* Select auxiliary transport that supports async active message callback */
     ucp_wireup_fill_aux_criteria(&criteria, ep_init_flags,
                                  UCP_ADDR_IFACE_FLAG_CB_ASYNC);
+    criteria.calc_score = ucp_wireup_aux_seg_size_score_func;
     status = ucp_wireup_select_transport(&select_ctx, &select_params, &criteria,
                                          ucp_tl_bitmap_max, UINT64_MAX,
                                          UINT64_MAX, UINT64_MAX, 0,
@@ -2911,6 +2930,7 @@ ucp_wireup_select_aux_transport(ucp_ep_h ep, unsigned ep_init_flags,
     /* Fallback to an auxiliary transport without async active message callback
      * requirement */
     ucp_wireup_fill_aux_criteria(&criteria, ep_init_flags, 0);
+    criteria.calc_score = ucp_wireup_aux_seg_size_score_func;
     return ucp_wireup_select_transport(&select_ctx, &select_params, &criteria,
                                        ucp_tl_bitmap_max, UINT64_MAX,
                                        UINT64_MAX, UINT64_MAX, 1, select_info);

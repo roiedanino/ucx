@@ -2322,8 +2322,9 @@ ucp_wireup_select_wireup_msg_lane(ucp_worker_h worker,
         attrs      = ucp_worker_iface_get_attr(worker, rsc_index);
         seg_size   = ucp_address_iface_seg_size(attrs);
 
-        /* if the current lane satisfies the wireup criteria, choose it for wireup.
-         * if it doesn't take a lane with a p2p transport */
+        /* Select a lane which satisfies the wireup criteria and with the
+         * highest seg_size and use it for wireup.
+         * If none found, use p2p transport */
         if ((ucp_wireup_check_select_flags(resource, attrs->cap.flags,
                                           &criteria.local_iface_flags,
                                           criteria.title,

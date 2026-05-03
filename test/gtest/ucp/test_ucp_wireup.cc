@@ -12,6 +12,7 @@
 #include "ucp/ucp_test.h"
 
 #include <algorithm>
+#include <memory>
 #include <set>
 
 extern "C" {
@@ -1886,6 +1887,56 @@ public:
                                            UCP_FEATURE_AMO64,
                                            true);
     }
+
+protected:
+    typedef std::pair<ucp_address_t*, ucp_unpacked_address_t> address_t;
+    typedef std::unique_ptr<address_t, void (*)(address_t*)> address_p;
+
+    address_p get_unpacked_address(ucp_worker_h local_worker,
+                                   ucp_worker_h remote_worker) const
+    {
+        size_t address_length;
+
+        address_p address(new address_t(NULL, {0}), [](address_t *addr) {
+            ucs_free(addr->first);
+            ucs_free(addr->second.address_list);
+            delete addr;
+        });
+
+        ASSERT_UCS_OK(ucp_worker_get_address(remote_worker, &address->first,
+                                             &address_length));
+        if (address_length == 0) {
+            UCS_TEST_ABORT("Got empty worker address");
+        }
+
+        ASSERT_UCS_OK(ucp_address_unpack(
+                local_worker, address->first,
+                ucp_worker_default_address_pack_flags(remote_worker),
+                &address->second));
+
+        return address;
+    }
+
+    static int
+    is_remote_aux_capable(const ucp_ep_config_key_t *key, ucp_lane_index_t lane,
+                          const ucp_tl_resource_desc_t *tl_rsc,
+                          const ucp_unpacked_address_t *remote_address,
+                          uint64_t remote_flags)
+    {
+        const ucp_ep_config_key_lane_t *lane_cfg = &key->lanes[lane];
+        const ucp_address_entry_t *ae;
+
+        ucp_unpacked_address_for_each(ae, remote_address) {
+            if ((tl_rsc->tl_name_csum == ae->tl_name_csum) &&
+                (lane_cfg->dst_md_index == ae->md_index) &&
+                (lane_cfg->dst_sys_dev == ae->sys_dev) &&
+                ucs_test_all_flags(ae->iface_attr.flags, remote_flags)) {
+                return 1;
+            }
+        }
+
+        return 0;
+    }
 };
 
 /* Test that wireup msg lane selects the highest seg_size among eligible lanes */
@@ -1900,43 +1951,77 @@ UCS_TEST_P(test_ucp_wireup_msg_lane, select_highest_seg_size_lane) {
 
     ucp_lane_index_t wireup_lane = config->key.wireup_msg_lane;
     const char *wireup_tl = ucp_ep_get_tl_rsc(e->ep(), wireup_lane)->tl_name;
+    address_p remote_address = get_unpacked_address(e->worker(),
+                                                    receiver().worker());
 
     UCS_TEST_MESSAGE << "Selected wireup message lane: " << wireup_tl
                      << " (lane " << (int)wireup_lane << ")";
 
-    /* Find the lane with maximum seg_size that could be used for wireup */
-    size_t max_seg_size = 0;
+    uint64_t local_flags = UCT_IFACE_FLAG_AM_BCOPY |
+                           UCT_IFACE_FLAG_PENDING;
+    uint64_t remote_flags = UCP_ADDR_IFACE_FLAG_AM_SYNC;
+    if (!ucp_ep_config_key_has_cm_lane(&config->key)) {
+        local_flags  |= UCT_IFACE_FLAG_CONNECT_TO_IFACE;
+        remote_flags |= UCP_ADDR_IFACE_FLAG_CONNECT_TO_IFACE |
+                        UCP_ADDR_IFACE_FLAG_CB_ASYNC;
+    }
+    if (config->key.err_mode == UCP_ERR_HANDLING_MODE_PEER) {
+        local_flags |= UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
+    }
+
+    /* Find the lane with maximum seg_size that satisfies the same AUX wireup
+     * criteria as ucp_wireup_select_wireup_msg_lane(). */
+    size_t max_aux_seg_size = 0;
+    ucp_lane_index_t max_aux_lane = UCP_NULL_LANE;
     for (ucp_lane_index_t lane = 0; lane < config->key.num_lanes; ++lane) {
         ucp_rsc_index_t rsc_index = config->key.lanes[lane].rsc_index;
         if (rsc_index == UCP_NULL_RESOURCE) {
             continue;
         }
 
-        const ucp_tl_resource_desc_t *tl_rsc = &e->worker()->context->tl_rscs[rsc_index];
-        uct_iface_attr_t *attrs = ucp_worker_iface_get_attr(e->worker(), rsc_index);
-
+        const ucp_tl_resource_desc_t *tl_rsc =
+                &e->worker()->context->tl_rscs[rsc_index];
+        uct_iface_attr_t *attrs =
+                ucp_worker_iface_get_attr(e->worker(), rsc_index);
         size_t seg_size = ucp_address_iface_seg_size(attrs);
-        UCS_TEST_MESSAGE << "  Eligible wireup transport: " << tl_rsc->tl_rsc.tl_name
-                            << " (lane " << (int)lane << ", seg_size=" << seg_size << ")";
+        int remote_aux_capable = is_remote_aux_capable(&config->key, lane,
+                                                       tl_rsc,
+                                                       &remote_address->second,
+                                                       remote_flags);
 
-        if ((seg_size > max_seg_size) &&
-            (attrs->cap.flags & UCT_IFACE_FLAG_AM_BCOPY) &&
-            (attrs->cap.flags & UCT_IFACE_FLAG_PENDING)
-        ) {
-            max_seg_size = seg_size;
+        UCS_TEST_MESSAGE << "  Wireup transport candidate: "
+                         << tl_rsc->tl_rsc.tl_name << " (lane " << (int)lane
+                         << ", seg_size=" << seg_size
+                         << ", local_aux="
+                         << ucs_test_all_flags(attrs->cap.flags, local_flags)
+                         << ", remote_aux=" << remote_aux_capable
+                         << ", p2p=" << ucp_ep_is_lane_p2p(e->ep(), lane)
+                         << ")";
+
+        if (ucs_test_all_flags(attrs->cap.flags, local_flags) &&
+            remote_aux_capable &&
+            ((max_aux_lane == UCP_NULL_LANE) ||
+             (seg_size > max_aux_seg_size))) {
+            max_aux_seg_size = seg_size;
+            max_aux_lane     = lane;
         }
     }
 
-    /* Verify the selected lane has the highest seg_size */
-
     ucp_rsc_index_t rsc_index = config->key.lanes[wireup_lane].rsc_index;
-    size_t wireup_seg_size = ucp_address_iface_seg_size(ucp_worker_iface_get_attr(e->worker(), rsc_index));
-    EXPECT_EQ(wireup_seg_size, max_seg_size)
-        << "Wireup lane " << wireup_tl << " (seg_size=" << wireup_seg_size
-        << ") has lower seg_size than the maximum available (" << max_seg_size << ")";
+    size_t wireup_seg_size = ucp_address_iface_seg_size(
+            ucp_worker_iface_get_attr(e->worker(), rsc_index));
+
+    if (max_aux_lane != UCP_NULL_LANE) {
+        EXPECT_EQ(wireup_seg_size, max_aux_seg_size)
+            << "Wireup lane " << wireup_tl << " (seg_size="
+            << wireup_seg_size << ") has lower seg_size than the maximum "
+            << "available AUX lane (" << max_aux_seg_size << ")";
+    } else {
+        EXPECT_TRUE(ucp_ep_is_lane_p2p(e->ep(), wireup_lane))
+            << "Expected wireup lane " << wireup_tl
+            << " to fallback to a p2p lane when no AUX lane is available";
+    }
 }
 
-/* Skipping shared memory transports as we don't have access to the remote flags in order 
- * to filter them out in the test */
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_wireup_msg_lane, all, "^sm")
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_wireup_msg_lane, tcp_ud, "tcp,ud,^sm")

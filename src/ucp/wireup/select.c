@@ -2360,7 +2360,7 @@ ucp_wireup_select_wireup_msg_lane(ucp_worker_h worker,
                                    ucp_wireup_peer_flags, NULL, 0))) {
             if (seg_size > max_seg_size) {
                 max_seg_size  = seg_size;
-                aux_lane = lane;
+                aux_lane      = lane;
             }
         } else if (ucp_worker_is_tl_p2p(worker, rsc_index) &&
                    !ucp_worker_is_tl_device(worker, rsc_index)) {

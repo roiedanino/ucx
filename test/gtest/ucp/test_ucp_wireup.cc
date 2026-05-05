@@ -2008,8 +2008,7 @@ private:
         const ucp_address_entry_t *address_entry;
 
         ucp_unpacked_address_for_each(address_entry, remote_address) {
-            if ((m_tl_rsc->tl_name_csum == address_entry->tl_name_csum) &&
-                ucp_wireup_is_lane_connected(m_ep, m_lane, address_entry)) {
+            if (m_tl_rsc->tl_name_csum == address_entry->tl_name_csum) {
                 return address_entry;
             }
         }
@@ -2058,17 +2057,6 @@ public:
                                            true);
     }
 
-protected:
-    static ucp_rsc_index_t
-    get_wireup_msg_rsc_index(ucp_ep_h ep, ucp_lane_index_t lane)
-    {
-        uct_ep_h uct_ep = ucp_ep_get_lane(ep, lane);
-
-        return ucp_wireup_ep_test(uct_ep) ?
-               ucp_wireup_ep_get_msg_rsc_index(ucp_wireup_ep(uct_ep)) :
-               ucp_ep_get_rsc_index(ep, lane);
-    }
-
 };
 
 /* Test that wireup msg lane selects the highest seg_size among eligible lanes */
@@ -2082,8 +2070,8 @@ UCS_TEST_P(test_ucp_wireup_msg_lane, select_highest_seg_size_lane) {
     }
 
     ucp_lane_index_t wireup_msg_lane = config->key.wireup_msg_lane;
-    ucp_rsc_index_t wireup_rsc_index = get_wireup_msg_rsc_index(e->ep(),
-                                                                wireup_msg_lane);
+    ucp_rsc_index_t wireup_rsc_index =
+            config->key.lanes[wireup_msg_lane].rsc_index;
     unpacked_address remote_address(receiver().worker());
     remote_address.unpack(e->worker());
     wireup_lane wireup_info(e->worker(), e->ep(), wireup_msg_lane,

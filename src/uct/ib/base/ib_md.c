@@ -30,6 +30,7 @@
 #include <pthread_np.h>
 #endif
 #include <sys/resource.h>
+#include <strings.h>
 
 
 #define UCT_IB_MD_RCACHE_DEFAULT_ALIGN 16
@@ -48,6 +49,35 @@ static const char *uct_ib_devx_objs[] = {
     [UCT_IB_DEVX_OBJ_AUTO]  = "auto",
     NULL
 };
+
+static int uct_ib_md_config_sscanf_relaxed_order(const char *buf, void *dest,
+                                                  const void *arg)
+{
+    if (!strcasecmp(buf, "only")) {
+        *(uct_ib_relaxed_ordering_t*)dest = UCT_IB_RELAXED_ORDERING_ONLY;
+        return 1;
+    }
+
+    return ucs_config_sscanf_ternary_auto(buf, dest, arg);
+}
+
+static int uct_ib_md_config_sprintf_relaxed_order(char *buf, size_t max,
+                                                   const void *src,
+                                                   const void *arg)
+{
+    if (*(const uct_ib_relaxed_ordering_t*)src ==
+        UCT_IB_RELAXED_ORDERING_ONLY) {
+        return snprintf(buf, max, "only");
+    }
+
+    return ucs_config_sprintf_ternary_auto(buf, max, src, arg);
+}
+
+#define UCT_IB_CONFIG_TYPE_RELAXED_ORDER \
+    {uct_ib_md_config_sscanf_relaxed_order, \
+     uct_ib_md_config_sprintf_relaxed_order, ucs_config_clone_int, \
+     ucs_config_release_nop, ucs_config_help_generic, ucs_config_doc_nop, \
+     "<yes|no|try|auto|only>"}
 
 ucs_config_field_t uct_ib_md_config_table[] = {
     {"", "", NULL,
@@ -168,8 +198,16 @@ ucs_config_field_t uct_ib_md_config_table[] = {
      ucs_offsetof(uct_ib_md_config_t, ext.mt_reg_bind), UCS_CONFIG_TYPE_BOOL},
 
     {"PCI_RELAXED_ORDERING", "auto",
-     "Enable relaxed ordering for PCIe transactions to improve performance on some systems.",
-     ucs_offsetof(uct_ib_md_config_t, mr_relaxed_order), UCS_CONFIG_TYPE_TERNARY_AUTO},
+     "Control relaxed ordering for PCIe transactions:\n"
+     "  no    - disable relaxed ordering\n"
+     "  yes   - request relaxed ordering and warn if it is unsupported\n"
+     "  try   - enable relaxed ordering when supported\n"
+     "  auto  - honor a firmware relaxed-only requirement, otherwise use "
+     "the CPU preference\n"
+     "  only  - force relaxed-only memory keys regardless of the firmware "
+     "capability\n",
+     ucs_offsetof(uct_ib_md_config_t, mr_relaxed_order),
+     UCT_IB_CONFIG_TYPE_RELAXED_ORDER},
 
     {"MAX_IDLE_RKEY_COUNT", "16",
      "Maximal number of invalidated memory keys that are kept idle before reuse.",
@@ -496,6 +534,7 @@ ucs_status_t uct_ib_reg_mr(const uct_ib_md_t *md, void *address, size_t length,
                                     DMABUF_FD, UCT_DMABUF_FD_INVALID);
     dmabuf_offset = UCS_PARAM_VALUE(UCT_MD_MEM_REG_FIELD, params, dmabuf_offset,
                                     DMABUF_OFFSET, 0);
+    access_flags  = uct_ib_md_access_flags(md, access_flags);
 
     if (dm != NULL) {
 #if HAVE_IBV_DM
@@ -1221,37 +1260,58 @@ static void uct_ib_md_log_relaxed_order(uct_ib_md_t *md)
     UCS_STRING_BUFFER_ONSTACK(strb, 128);
 
     if (!uct_ib_md_is_relaxed_order(md)) {
-        ucs_debug("%s: relaxed order memory access is disabled",
-                  uct_ib_device_name(&md->dev));
+        ucs_debug("%s: relaxed order memory access is disabled%s",
+                  uct_ib_device_name(&md->dev),
+                  md->relaxed_order_required ? " (required)" : "");
         return;
     }
 
     ucs_string_buffer_append_flags(&strb, md->relaxed_order_mem_types,
                                    ucs_memory_type_names);
-    ucs_debug("%s: relaxed order memory access is enabled for %s",
-              uct_ib_device_name(&md->dev), ucs_string_buffer_cstr(&strb));
+    ucs_debug("%s: relaxed order memory access is enabled for %s%s",
+              uct_ib_device_name(&md->dev), ucs_string_buffer_cstr(&strb),
+              md->relaxed_order_required ? " (required)" : "");
 }
 
-void uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
-                                   const uct_ib_md_config_t *md_config,
-                                   int is_supported)
+ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
+                                           const uct_ib_md_config_t *md_config,
+                                           int is_supported, int is_required)
 {
-    int have_relaxed_order = (IBV_ACCESS_RELAXED_ORDERING != 0) && is_supported;
+    int relaxed_order_required =
+            uct_ib_md_is_relaxed_order_required(md_config, is_required);
+    int have_relaxed_order = (IBV_ACCESS_RELAXED_ORDERING != 0) &&
+                             (is_supported || relaxed_order_required);
     uint64_t all_mem_types = UCS_MASK(UCS_MEMORY_TYPE_LAST);
     uint64_t mem_types     = 0;
 
-    if (md_config->mr_relaxed_order == UCS_YES) {
+    md->relaxed_order_required = relaxed_order_required;
+    if (relaxed_order_required) {
+        if (!have_relaxed_order) {
+            ucs_error("%s: strong-order memory keys are not supported, but "
+                      "relaxed-order memory access is unavailable",
+                      uct_ib_device_name(&md->dev));
+            return UCS_ERR_UNSUPPORTED;
+        }
+
+        if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_NO) {
+            ucs_error("%s: strong-order memory keys are not supported; "
+                      "IB_PCI_RELAXED_ORDERING=n is invalid",
+                      uct_ib_device_name(&md->dev));
+            return UCS_ERR_INVALID_PARAM;
+        }
+
+    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_YES) {
         if (have_relaxed_order) {
             mem_types = all_mem_types;
         } else {
             ucs_warn("%s: relaxed order memory access requested, but "
                      "unsupported",
                      uct_ib_device_name(&md->dev));
-            return;
+            return UCS_OK;
         }
-    } else if (md_config->mr_relaxed_order == UCS_TRY) {
+    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_TRY) {
         mem_types = have_relaxed_order ? all_mem_types : 0;
-    } else if (md_config->mr_relaxed_order == UCS_AUTO) {
+    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_AUTO) {
         mem_types = have_relaxed_order ?
                     uct_ib_md_relaxed_order_auto_mem_types(
                             ucs_arch_get_cpu_vendor(), ucs_arch_get_cpu_model()) :
@@ -1260,6 +1320,7 @@ void uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
 
     md->relaxed_order_mem_types = mem_types;
     uct_ib_md_log_relaxed_order(md);
+    return UCS_OK;
 }
 
 void uct_ib_check_gpudirect_driver(uct_ib_md_t *md, const char *file,
@@ -1348,6 +1409,7 @@ ucs_status_t uct_ib_md_open_common(uct_ib_md_t *md,
                           UCT_MD_FLAG_ADVISE;
     md->reg_cost                = md_config->reg_cost;
     md->relaxed_order_mem_types = 0;
+    md->relaxed_order_required  = 0;
 
     /* Create statistics */
     status = UCS_STATS_NODE_ALLOC(&md->stats, &uct_ib_md_stats_class,
@@ -1606,7 +1668,10 @@ static ucs_status_t uct_ib_verbs_md_open(struct ibv_device *ibv_device,
     md->flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
 
     uct_ib_md_ece_check(md);
-    uct_ib_md_parse_relaxed_order(md, md_config, 0);
+    status = uct_ib_md_parse_relaxed_order(md, md_config, 0, 0);
+    if (status != UCS_OK) {
+        goto err_device_config_release;
+    }
     uct_ib_md_check_odp(md, md_config);
 
     *p_md = md;

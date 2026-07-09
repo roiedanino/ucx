@@ -130,6 +130,15 @@ typedef struct {
 } uct_ib_mem_t;
 
 
+typedef enum {
+    UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,
+    UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,
+    UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,
+    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO,
+    UCT_IB_RELAXED_ORDERING_ONLY
+} uct_ib_relaxed_ordering_t;
+
+
 typedef struct {
     struct ibv_mr           *ib;
 } uct_ib_mr_t;
@@ -164,6 +173,7 @@ typedef struct uct_ib_md {
     uint64_t                 subnet_filter;
     double                   pci_bw;
     uint64_t                 relaxed_order_mem_types;
+    int                      relaxed_order_required;
     int                      fork_init;
     uint64_t                 reg_mem_types;
     uint64_t                 gva_mem_types;
@@ -213,7 +223,7 @@ typedef struct uct_ib_md_config {
     int                      mlx5dv; /**< mlx5 support */
     int                      devx; /**< DEVX support */
     uint64_t                 devx_objs;    /**< Objects to be created by DevX */
-    ucs_ternary_auto_value_t mr_relaxed_order; /**< Allow reorder memory accesses */
+    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Allow reorder memory accesses */
     int                      enable_gpudirect_rdma; /**< Enable GPUDirect RDMA */
     int                      xgvmi_umr_enable; /**< Enable UMR workflow for XGVMI */
 } uct_ib_md_config_t;
@@ -364,6 +374,10 @@ uct_ib_memh_is_relaxed_order(uct_ib_md_t *md,
 {
     ucs_memory_type_t mem_type;
 
+    if (md->relaxed_order_required) {
+        return 0;
+    }
+
     mem_type = (params == NULL) ? UCS_MEMORY_TYPE_HOST :
                UCT_MD_MEM_REG_FIELD_VALUE(params, mem_type, FIELD_MEM_TYPE,
                                           UCS_MEMORY_TYPE_HOST);
@@ -371,6 +385,14 @@ uct_ib_memh_is_relaxed_order(uct_ib_md_t *md,
     ucs_assert(mem_type < UCS_MEMORY_TYPE_LAST);
 
     return !!(md->relaxed_order_mem_types & UCS_BIT(mem_type));
+}
+
+static UCS_F_ALWAYS_INLINE uint64_t
+uct_ib_md_access_flags(const uct_ib_md_t *md, uint64_t access_flags)
+{
+    return md->relaxed_order_required ?
+                   (access_flags | IBV_ACCESS_RELAXED_ORDERING) :
+                   access_flags;
 }
 
 static UCS_F_ALWAYS_INLINE uint32_t uct_ib_memh_get_lkey(uct_mem_h memh)
@@ -396,9 +418,16 @@ static UCS_F_ALWAYS_INLINE uint8_t uct_ib_md_get_atomic_mr_id(uct_ib_md_t *md)
     return md->flush_rkey >> 8;
 }
 
-void uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
-                                   const uct_ib_md_config_t *md_config,
-                                   int is_supported);
+static UCS_F_ALWAYS_INLINE int uct_ib_md_is_relaxed_order_required(
+        const uct_ib_md_config_t *md_config, int fw_required)
+{
+    return fw_required ||
+           (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_ONLY);
+}
+
+ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
+                                           const uct_ib_md_config_t *md_config,
+                                           int is_supported, int is_required);
 
 ucs_status_t uct_ib_md_query(uct_md_h uct_md, uct_md_attr_v2_t *md_attr);
 

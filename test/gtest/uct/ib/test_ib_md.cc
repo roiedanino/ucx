@@ -148,6 +148,7 @@ void test_ib_md::ib_md_umr_check(void *rkey_buffer, bool amo_access,
 {
     ucs_status_t status;
     size_t alloc_size;
+    bool has_strict_mr;
     void *buffer;
     int ret;
 
@@ -188,18 +189,17 @@ void test_ib_md::ib_md_umr_check(void *rkey_buffer, bool amo_access,
         EXPECT_FALSE(ib_memh->flags & UCT_IB_MEM_ACCESS_REMOTE_ATOMIC);
     }
 
-    check_mlx5_mr(ib_memh, false,
-                  uct_ib_md_is_relaxed_order(&ib_md()));
+    has_strict_mr = uct_ib_md_is_relaxed_order(&ib_md()) &&
+                    !ib_md().relaxed_order_required;
+    check_mlx5_mr(ib_memh, false, has_strict_mr);
 
     status = uct_md_mkey_pack(md(), memh, rkey_buffer);
     EXPECT_UCS_OK(status);
 
     status = uct_md_mkey_pack(md(), memh, rkey_buffer);
     EXPECT_UCS_OK(status);
-    check_mlx5_mr(ib_memh,
-                  (amo_access && has_ksm()) ||
-                          uct_ib_md_is_relaxed_order(&ib_md()),
-                  uct_ib_md_is_relaxed_order(&ib_md()));
+    check_mlx5_mr(ib_memh, (amo_access && has_ksm()) || has_strict_mr,
+                  has_strict_mr);
 
     status = uct_md_mem_dereg(md(), memh);
     EXPECT_UCS_OK(status);
@@ -229,6 +229,23 @@ UCS_TEST_P(test_ib_md, relaxed_order, "IB_PCI_RELAXED_ORDERING=try") {
 
     ib_md_umr_check(&rkey_buffer[0], false);
     ib_md_umr_check(&rkey_buffer[0], true);
+}
+
+UCS_TEST_P(test_ib_md, relaxed_order_only_config) {
+    uct_ib_md_config_t *md_config;
+
+    ASSERT_UCS_OK(uct_config_modify(m_md_config, "IB_PCI_RELAXED_ORDERING",
+                                    "only"));
+    md_config = ucs_derived_of((uct_md_config_t*)m_md_config,
+                               uct_ib_md_config_t);
+    EXPECT_EQ(UCT_IB_RELAXED_ORDERING_ONLY, md_config->mr_relaxed_order);
+    EXPECT_TRUE(uct_ib_md_is_relaxed_order_required(md_config, 0));
+
+    ASSERT_UCS_OK(uct_config_modify(m_md_config, "IB_PCI_RELAXED_ORDERING",
+                                    "auto"));
+    EXPECT_EQ(UCT_IB_RELAXED_ORDERING_AUTO, md_config->mr_relaxed_order);
+    EXPECT_FALSE(uct_ib_md_is_relaxed_order_required(md_config, 0));
+    EXPECT_TRUE(uct_ib_md_is_relaxed_order_required(md_config, 1));
 }
 
 UCS_TEST_P(test_ib_md, aligned) {

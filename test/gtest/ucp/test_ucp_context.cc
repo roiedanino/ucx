@@ -72,6 +72,54 @@ UCS_TEST_P(test_ucp_context, max_hca_per_gpu_config)
     EXPECT_EQ(2u, ucp_reg_devices_count(e->ucph()->config.ext.max_hca_per_gpu));
 }
 
+UCS_TEST_P(test_ucp_context, rndv_lane_default)
+{
+    entity *e = create_entity();
+
+    EXPECT_EQ(UCS_ULUNITS_AUTO,
+              e->ucph()->config.ext.max_rndv_lanes_config);
+    EXPECT_EQ(UCP_MAX_RNDV_LANES_DEFAULT,
+              e->ucph()->config.ext.max_rndv_lanes);
+}
+
+UCS_TEST_P(test_ucp_context, rndv_lane_config_override)
+{
+    modify_config("MAX_RNDV_RAILS", "3");
+
+    entity *e = create_entity();
+    EXPECT_EQ(3ul, e->ucph()->config.ext.max_rndv_lanes_config);
+    EXPECT_EQ(3u, e->ucph()->config.ext.max_rndv_lanes);
+}
+
+UCS_TEST_P(test_ucp_context, rndv_lane_alias_override)
+{
+    modify_config("MAX_RNDV_LANES", "3");
+
+    entity *e = create_entity();
+    EXPECT_EQ(3ul, e->ucph()->config.ext.max_rndv_lanes_config);
+    EXPECT_EQ(3u, e->ucph()->config.ext.max_rndv_lanes);
+}
+
+UCS_TEST_P(test_ucp_context, rndv_lane_config_invalid_inf)
+{
+    ucs::handle<ucp_config_t*> config;
+    UCS_TEST_CREATE_HANDLE(ucp_config_t*, config, ucp_config_release,
+                           ucp_config_read, NULL, NULL);
+
+    ASSERT_UCS_OK(ucp_config_modify(config.get(), "MAX_RNDV_RAILS", "inf"));
+
+    ucp_context_h ucph;
+    ucs_status_t status;
+    {
+        scoped_log_handler slh(hide_errors_logger);
+        status = ucp_init(&get_variant_ctx_params(), config.get(), &ucph);
+    }
+    EXPECT_EQ(UCS_ERR_INVALID_PARAM, status);
+    if (status == UCS_OK) {
+        ucp_cleanup(ucph);
+    }
+}
+
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_context, all, "all")
 
 class test_ucp_aliases : public test_ucp_context {

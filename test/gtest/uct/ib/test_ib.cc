@@ -1143,3 +1143,23 @@ UCS_TEST_SKIP_COND_P(test_uct_ib_mtu, non_equal_mtu,
 }
 
 UCT_INSTANTIATE_RC_TEST_CASE(test_uct_ib_mtu);
+
+class test_uct_ib_num_paths : public test_uct_ib {};
+
+UCS_TEST_P(test_uct_ib_num_paths, auto_detection)
+{
+    uct_ib_iface_t *ib_iface = ucs_derived_of(m_e1->iface(), uct_ib_iface_t);
+    const uct_ib_device_spec_t *dev_spec =
+            uct_ib_device_spec(uct_ib_iface_device(ib_iface));
+    uct_iface_attr_t iface_attr;
+
+    ASSERT_UCS_OK(uct_iface_query(m_e1->iface(), &iface_attr));
+
+    if (uct_ib_iface_port_is_xdr(ib_iface) &&
+        (dev_spec->pci_id.vendor == 0x15b3) &&
+        (dev_spec->pci_id.device == 4133)) {
+        EXPECT_GE(iface_attr.dev_num_paths, 4u);
+    }
+}
+
+UCT_INSTANTIATE_IB_TEST_CASE(test_uct_ib_num_paths);

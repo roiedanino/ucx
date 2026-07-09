@@ -535,6 +535,34 @@ protected:
         }
     }
 
+    static proto_select_data
+    get_ep_proto_select_data(const entity &e, ucp_proto_select_key_t key,
+                             size_t msg_length)
+    {
+        ucp_ep_config_t *config = ucp_worker_ep_config(e.worker(),
+                                                       ep_config_index(e));
+        proto_select_data result;
+        bool found = false;
+        ucp_proto_select_elem_t select_elem;
+        ucp_proto_select_key_t select_key;
+
+        kh_foreach(config->proto_select.hash, select_key.u64, select_elem, {
+            if (key_match(key, select_key)) {
+                auto data = select_data_for_range(e.worker(), select_elem,
+                                                  msg_length);
+                if (found) {
+                    EXPECT_EQ(result, data);
+                } else {
+                    result = data;
+                    found  = true;
+                }
+            }
+        })
+
+        EXPECT_TRUE(found);
+        return result;
+    }
+
     static bool
     key_match(ucp_proto_select_key_t req, ucp_proto_select_key_t actual)
     {
@@ -850,6 +878,61 @@ UCS_TEST_P(test_ucp_proto_mock_rcx, rndv_4_paths,
          "12% on rc_mlx5/mock_1:1/path0, 14% on rc_mlx5/mock_0:1/path0, "
          "14% on rc_mlx5/mock_0:1/path1, 12% on rc_mlx5/mock_1:1/path1, 14%"},
     }, key);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx, rndv_get_auto_4_paths,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4", "RNDV_SCHEME=get_zcopy",
+           "RNDV_THRESH=0")
+{
+    send_recv_am(1 * UCS_MBYTE);
+
+    ucp_proto_select_key_t key = any_key();
+    key.param.op_id_flags      = UCP_OP_ID_AM_SEND;
+    key.param.op_attr          = 0;
+
+    auto data = get_ep_proto_select_data(sender(), key, 1 * UCS_MBYTE);
+    EXPECT_EQ("rendezvous zero-copy read from remote", data.desc);
+    for (unsigned path_index = 0; path_index < 4; ++path_index) {
+        std::string path = "rc_mlx5/mock_0:1/path" +
+                           std::to_string(path_index);
+        EXPECT_NE(std::string::npos, data.config.find(path));
+    }
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx, rndv_get_auto_2_paths_small,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4", "RNDV_SCHEME=get_zcopy",
+           "RNDV_THRESH=0")
+{
+    send_recv_am(64 * UCS_KBYTE);
+
+    ucp_proto_select_key_t key = any_key();
+    key.param.op_id_flags      = UCP_OP_ID_AM_SEND;
+    key.param.op_attr          = 0;
+
+    auto data = get_ep_proto_select_data(sender(), key, 64 * UCS_KBYTE);
+    EXPECT_EQ("rendezvous zero-copy read from remote", data.desc);
+    EXPECT_NE(std::string::npos, data.config.find("path0"));
+    EXPECT_NE(std::string::npos, data.config.find("path1"));
+    EXPECT_EQ(std::string::npos, data.config.find("path2"));
+    EXPECT_EQ(std::string::npos, data.config.find("path3"));
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx, rndv_put_auto_two_paths,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4", "RNDV_SCHEME=put_zcopy",
+           "RNDV_THRESH=0")
+{
+    send_recv_am(64 * UCS_KBYTE);
+
+    ucp_proto_select_key_t key = any_key();
+    key.param.op_id_flags      = UCP_OP_ID_AM_SEND;
+    key.param.op_attr          = 0;
+
+    auto data = get_ep_proto_select_data(sender(), key, 64 * UCS_KBYTE);
+    EXPECT_EQ("rendezvous zero-copy fenced write to remote", data.desc);
+    EXPECT_NE(std::string::npos, data.config.find("path0"));
+    EXPECT_NE(std::string::npos, data.config.find("path1"));
+    EXPECT_EQ(std::string::npos, data.config.find("path2"));
+    EXPECT_EQ(std::string::npos, data.config.find("path3"));
 }
 
 UCS_TEST_P(test_ucp_proto_mock_rcx, rma_put_2_lanes,

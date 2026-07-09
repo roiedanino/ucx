@@ -103,11 +103,47 @@ ucp_proto_select_add_lane(ucp_proto_lane_selection_t *selection,
     selection->dev_count[dev_index]++;
 }
 
+static UCS_F_ALWAYS_INLINE void
+ucp_proto_multi_limit_device_paths(
+        const ucp_proto_init_params_t *params,
+        const ucp_lane_index_t *lanes,
+        ucp_lane_index_t lane, ucp_lane_index_t max_paths_per_device,
+        ucp_lane_index_t max_lanes,
+        const ucp_proto_lane_selection_t *selection,
+        ucp_lane_map_t *index_map_p)
+{
+    const uct_iface_attr_t *iface_attr;
+    ucp_rsc_index_t dev_index;
+    ucp_lane_index_t candidate_index;
+
+    if (max_paths_per_device == 0) {
+        return;
+    }
+
+    iface_attr = ucp_proto_common_get_iface_attr(params, lane);
+    if (iface_attr->dev_num_paths <= max_lanes) {
+        return;
+    }
+
+    dev_index = ucp_proto_common_get_dev_index(params, lane);
+    if (selection->dev_count[dev_index] < max_paths_per_device) {
+        return;
+    }
+
+    ucs_for_each_bit(candidate_index, *index_map_p) {
+        if (ucp_proto_common_get_dev_index(params, lanes[candidate_index]) ==
+            dev_index) {
+            *index_map_p &= ~UCS_BIT(candidate_index);
+        }
+    }
+}
+
 static void
 ucp_proto_multi_select_bw_lanes(const ucp_proto_init_params_t *params,
                                 const ucp_lane_index_t *lanes,
                                 ucp_lane_index_t num_lanes,
                                 ucp_lane_index_t max_lanes,
+                                ucp_lane_index_t max_paths_per_device,
                                 const ucp_proto_common_tl_perf_t *lanes_perf,
                                 int fixed_first_lane,
                                 ucp_proto_lane_selection_t *selection)
@@ -123,6 +159,9 @@ ucp_proto_multi_select_bw_lanes(const ucp_proto_init_params_t *params,
     if (fixed_first_lane) {
         ucp_proto_select_add_lane(selection, params, lanes[0]);
         index_map &= ~UCS_BIT(0);
+        ucp_proto_multi_limit_device_paths(params, lanes, lanes[0],
+                                           max_paths_per_device, max_lanes,
+                                           selection, &index_map);
     }
 
     for (i = fixed_first_lane? 1 : 0; i < ucs_min(max_lanes, num_lanes); ++i) {
@@ -136,6 +175,13 @@ ucp_proto_multi_select_bw_lanes(const ucp_proto_init_params_t *params,
 
         ucp_proto_select_add_lane(selection, params, lanes[lane_index]);
         index_map &= ~UCS_BIT(lane_index);
+        ucp_proto_multi_limit_device_paths(params, lanes, lanes[lane_index],
+                                           max_paths_per_device, max_lanes,
+                                           selection, &index_map);
+
+        if (index_map == 0) {
+            break;
+        }
     }
 
     /* TODO: Aggregate performance:
@@ -409,7 +455,8 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
     }
 
     ucp_proto_multi_select_bw_lanes(&params->super.super, lanes, num_lanes,
-                                    params->max_lanes, lanes_perf,
+                                    params->max_lanes,
+                                    params->max_paths_per_device, lanes_perf,
                                     fixed_first_lane, &selection);
 
     ucs_trace("selected %u lanes for %s", selection.num_lanes,

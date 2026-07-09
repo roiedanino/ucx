@@ -119,6 +119,10 @@ typedef struct {
     /* Maximal number of lanes to select */
     ucp_lane_index_t               max_lanes;
 
+    /* Maximal number of paths to select on a device that exposes more paths
+     * than max_lanes. Zero means no per-device limit. */
+    ucp_lane_index_t               max_paths_per_device;
+
     /* Minimal chunk size. It defines the minimal size of the fragment to split into
      * several parts. The goal is to not split below this limit */
     size_t                         min_chunk;

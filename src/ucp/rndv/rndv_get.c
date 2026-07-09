@@ -17,6 +17,57 @@
 
 #define UCP_PROTO_RNDV_GET_DESC "read from remote"
 
+static ucp_lane_index_t
+ucp_proto_rndv_get_max_lanes(const ucp_proto_init_params_t *init_params)
+{
+    ucp_context_t *context                 = init_params->worker->context;
+    const ucp_ep_config_key_t *ep_key      = init_params->ep_config_key;
+    ucp_lane_index_t max_lanes             = context->config.ext.max_rndv_lanes;
+    const uct_iface_attr_t *iface_attr;
+    ucp_lane_index_t lane;
+
+    if (context->config.ext.max_rndv_lanes_config != UCS_ULUNITS_AUTO) {
+        return max_lanes;
+    }
+
+    for (lane = 0; lane < ep_key->num_lanes; ++lane) {
+        if (!(ep_key->lanes[lane].lane_types &
+              UCS_BIT(UCP_LANE_TYPE_RMA_BW))) {
+            continue;
+        }
+
+        iface_attr = ucp_proto_common_get_iface_attr(init_params, lane);
+        if (!(iface_attr->cap.flags & UCT_IFACE_FLAG_GET_ZCOPY)) {
+            continue;
+        }
+
+        max_lanes = ucs_max(max_lanes,
+                            ucs_min(iface_attr->dev_num_paths,
+                                    UCP_PROTO_MAX_LANES));
+    }
+
+    return max_lanes;
+}
+
+static void
+ucp_proto_rndv_get_add_proto(ucp_proto_multi_init_params_t *params)
+{
+    ucp_proto_rndv_bulk_priv_t rpriv;
+    ucp_proto_perf_t *perf;
+    ucs_status_t status;
+
+    status = ucp_proto_rndv_bulk_init(params, UCP_PROTO_RNDV_GET_DESC,
+                                      UCP_PROTO_RNDV_ATS_NAME, &perf, &rpriv);
+    if (status != UCS_OK) {
+        return;
+    }
+
+    ucp_proto_select_add_proto(&params->super.super, params->super.cfg_thresh,
+                               params->super.cfg_priority, perf, &rpriv,
+                               UCP_PROTO_MULTI_EXTENDED_PRIV_SIZE(&rpriv,
+                                                                  mpriv));
+}
+
 static void
 ucp_proto_rndv_get_common_probe(const ucp_proto_init_params_t *init_params,
                                 uint64_t rndv_modes, size_t max_length,
@@ -26,6 +77,8 @@ ucp_proto_rndv_get_common_probe(const ucp_proto_init_params_t *init_params,
                                 const ucp_memory_info_t *reg_mem_info)
 {
     ucp_context_t *context               = init_params->worker->context;
+    ucp_lane_index_t max_lanes           =
+            ucp_proto_rndv_get_max_lanes(init_params);
     ucp_proto_multi_init_params_t params = {
         .super.super         = *init_params,
         .super.cfg_thresh    = ucp_proto_rndv_cfg_thresh(context, rndv_modes),
@@ -58,25 +111,18 @@ ucp_proto_rndv_get_common_probe(const ucp_proto_init_params_t *init_params,
         .opt_align_offs      = ucs_offsetof(uct_iface_attr_t,
                                             cap.get.opt_zcopy_align),
     };
-    ucp_proto_rndv_bulk_priv_t rpriv;
-    ucp_proto_perf_t *perf;
-    ucs_status_t status;
 
     if (!ucp_proto_rndv_op_check(init_params, UCP_OP_ID_RNDV_RECV,
                                  support_ppln)) {
         return;
     }
 
-    status = ucp_proto_rndv_bulk_init(&params, UCP_PROTO_RNDV_GET_DESC,
-                                      UCP_PROTO_RNDV_ATS_NAME, &perf, &rpriv);
-    if (status != UCS_OK) {
-        return;
-    }
+    ucp_proto_rndv_get_add_proto(&params);
 
-    ucp_proto_select_add_proto(&params.super.super, params.super.cfg_thresh,
-                               params.super.cfg_priority, perf, &rpriv,
-                               UCP_PROTO_MULTI_EXTENDED_PRIV_SIZE(&rpriv,
-                                                                  mpriv));
+    if (max_lanes > params.max_lanes) {
+        params.max_lanes = max_lanes;
+        ucp_proto_rndv_get_add_proto(&params);
+    }
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_t

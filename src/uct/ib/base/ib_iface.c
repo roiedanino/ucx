@@ -38,6 +38,7 @@
  */
 #define UCT_IB_NDR_READ_PATH_BANDWIDTH 38e9
 #define UCT_IB_XDR_READ_PATH_BANDWIDTH 35e9
+#define UCT_IB_XDR_READ_NUM_PATHS      4
 
 /**
  * Minimal NDR single path ratio.
@@ -191,7 +192,8 @@ ucs_config_field_t uct_ib_iface_config_table[] = {
    "to the port link layer:\n"
    " RoCE       - "UCS_PP_MAKE_STRING(UCT_IB_DEV_MAX_PORTS) " for LAG port, otherwise - 1.\n"
    " InfiniBand - As the number of path bits enabled by fabric's LMC value and selected\n"
-   "              by "UCS_DEFAULT_ENV_PREFIX UCT_IB_CONFIG_PREFIX"LID_PATH_BITS configuration.",
+   "              by "UCS_DEFAULT_ENV_PREFIX UCT_IB_CONFIG_PREFIX"LID_PATH_BITS configuration.\n"
+   "              ConnectX-9 XDR ports expose four paths for RDMA read bandwidth.",
    ucs_offsetof(uct_ib_iface_config_t, num_paths), UCS_CONFIG_TYPE_ULUNITS},
 
   {"ROCE_LOCAL_SUBNET", "n",
@@ -1400,6 +1402,8 @@ static unsigned uct_ib_iface_roce_lag_level(uct_ib_iface_t *iface)
 static void uct_ib_iface_set_num_paths(uct_ib_iface_t *iface,
                                        const uct_ib_iface_config_t *config)
 {
+    const uct_ib_device_spec_t *dev_spec;
+
     if (config->num_paths == UCS_ULUNITS_AUTO) {
         if (uct_ib_iface_is_roce(iface)) {
             /* RoCE - number of paths is RoCE LAG level */
@@ -1408,6 +1412,13 @@ static void uct_ib_iface_set_num_paths(uct_ib_iface_t *iface,
             /* IB - number of paths is LMC level */
             ucs_assert(iface->path_bits_count > 0);
             iface->num_paths = iface->path_bits_count;
+        }
+
+        dev_spec = uct_ib_device_spec(uct_ib_iface_device(iface));
+        if (uct_ib_iface_port_is_xdr(iface) &&
+            (dev_spec->flags & UCT_IB_DEVICE_FLAG_XDR_READ_4_PATHS)) {
+            iface->num_paths = ucs_max(iface->num_paths,
+                                       UCT_IB_XDR_READ_NUM_PATHS);
         }
 
         if ((iface->num_paths == 1) &&

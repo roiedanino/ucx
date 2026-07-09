@@ -29,6 +29,7 @@
 #include <ucs/type/init_once.h>
 #include <ucs/vfs/base/vfs_cb.h>
 #include <ucs/vfs/base/vfs_obj.h>
+#include <limits.h>
 #include <string.h>
 #include <dlfcn.h>
 
@@ -227,11 +228,15 @@ static ucs_config_field_t ucp_context_config_table[] = {
    ucs_offsetof(ucp_context_config_t, max_eager_lanes), UCS_CONFIG_TYPE_UINT},
 
   {"MAX_RNDV_LANES", NULL,"",
-   ucs_offsetof(ucp_context_config_t, max_rndv_lanes), UCS_CONFIG_TYPE_UINT},
+   ucs_offsetof(ucp_context_config_t, max_rndv_lanes_config),
+   UCS_CONFIG_TYPE_ULUNITS},
 
-  {"MAX_RNDV_RAILS", "2",
-   "Maximal number of devices on which a rendezvous operation may be executed in parallel",
-   ucs_offsetof(ucp_context_config_t, max_rndv_lanes), UCS_CONFIG_TYPE_UINT},
+  {"MAX_RNDV_RAILS", "auto",
+   "Maximal number of devices on which a rendezvous operation may be executed\n"
+   "in parallel. With 'auto', the default is two devices, while a transport\n"
+   "may expose additional paths needed by a single device.",
+   ucs_offsetof(ucp_context_config_t, max_rndv_lanes_config),
+   UCS_CONFIG_TYPE_ULUNITS},
 
   {"MAX_RMA_LANES", NULL, "",
    ucs_offsetof(ucp_context_config_t, max_rma_lanes), UCS_CONFIG_TYPE_UINT},
@@ -2367,6 +2372,23 @@ static double ucp_context_get_protov1_memcpy_bw()
                    UCP_CPU_EST_BCOPY_BW_DEFAULT_PROTOV1;
 }
 
+static ucs_status_t
+ucp_context_resolve_rndv_config(ucp_context_config_t *config)
+{
+    if (config->max_rndv_lanes_config == UCS_ULUNITS_AUTO) {
+        config->max_rndv_lanes = UCP_MAX_RNDV_LANES_DEFAULT;
+    } else if ((config->max_rndv_lanes_config == UCS_ULUNITS_INF) ||
+               (config->max_rndv_lanes_config > UINT_MAX)) {
+        ucs_error("maximum number of rendezvous lanes must not exceed %u",
+                  UINT_MAX);
+        return UCS_ERR_INVALID_PARAM;
+    } else {
+        config->max_rndv_lanes = config->max_rndv_lanes_config;
+    }
+
+    return UCS_OK;
+}
+
 static int
 ucp_dynamic_tl_switch_config_valid(const ucp_context_config_t *config)
 {
@@ -2402,6 +2424,11 @@ static ucs_status_t ucp_fill_config(ucp_context_h context,
                                           ucp_context_config_table);
     if (status != UCS_OK) {
         goto err;
+    }
+
+    status = ucp_context_resolve_rndv_config(&context->config.ext);
+    if (status != UCS_OK) {
+        goto err_free_config_ext;
     }
 
     if (context->config.ext.estimated_num_eps != UCS_ULUNITS_AUTO) {

@@ -1296,7 +1296,7 @@ ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
                           "IBV_ACCESS_RELAXED_ORDERING is not supported",
                           uct_ib_device_name(&md->dev));
             }
-            return UCS_ERR_UNSUPPORTED;
+            return is_required ? UCS_ERR_IO_ERROR : UCS_ERR_UNSUPPORTED;
         }
 
         if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_NO) {

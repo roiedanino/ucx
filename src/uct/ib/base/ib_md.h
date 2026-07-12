@@ -178,7 +178,7 @@ typedef struct uct_ib_md {
     uint64_t                 subnet_filter;
     double                   pci_bw;
     uint64_t                 relaxed_order_mem_types;
-    int                      relaxed_order_required; /**< Firmware required */
+    int                      relaxed_order_required; /**< Relaxed-only required */
     int                      fork_init;
     uint64_t                 reg_mem_types;
     uint64_t                 gva_mem_types;

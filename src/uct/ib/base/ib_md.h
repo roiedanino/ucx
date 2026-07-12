@@ -138,7 +138,9 @@ typedef enum {
     UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,   /**< Disable relaxed ordering */
     UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,  /**< Enable; warn if unsupported */
     UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,  /**< Enable when supported */
-    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware requirement */
+    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware relaxed-only
+                                               *   requirement; otherwise derive
+                                               *   from CPU preference */
     UCT_IB_RELAXED_ORDERING_ONLY            /**< Force relaxed-only keys */
 } uct_ib_relaxed_ordering_t;
 
@@ -178,7 +180,7 @@ typedef struct uct_ib_md {
     uint64_t                 subnet_filter;
     double                   pci_bw;
     uint64_t                 relaxed_order_mem_types;
-    int                      relaxed_order_required; /**< Relaxed-only required */
+    int                      relaxed_order_required; /**< Relaxed-only mode */
     int                      fork_init;
     uint64_t                 reg_mem_types;
     uint64_t                 gva_mem_types;
@@ -343,6 +345,15 @@ static inline uint16_t uct_ib_md_atomic_offset(uint8_t atomic_mr_id)
 }
 
 
+/**
+ * Return the MR type to use for atomic operations on @a md.
+ *
+ * When relaxed ordering is enabled but NOT required (i.e. the device provides
+ * both a relaxed-order default MR and a companion strict-order MR), atomics
+ * must use the strict-order MR (@c UCT_IB_MR_STRICT_ORDER). In all other
+ * cases, relaxed ordering is either disabled or required, and the default MR
+ * is used.
+ */
 static UCS_F_ALWAYS_INLINE uct_ib_mr_type_t
 uct_ib_memh_get_atomic_mr_type(const uct_ib_mem_t *memh)
 {

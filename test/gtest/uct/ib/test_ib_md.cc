@@ -24,6 +24,7 @@ protected:
     void ib_md_umr_check(void *rkey_buffer, bool amo_access,
                          size_t size = 8192, bool aligned = false);
     bool has_ksm() const;
+    bool has_atomic_ksm() const;
 
     bool has_devx() const
     {
@@ -198,7 +199,7 @@ void test_ib_md::ib_md_umr_check(void *rkey_buffer, bool amo_access,
 
     status = uct_md_mkey_pack(md(), memh, rkey_buffer);
     EXPECT_UCS_OK(status);
-    check_mlx5_mr(ib_memh, (amo_access && has_ksm()) || has_strict_mr,
+    check_mlx5_mr(ib_memh, (amo_access && has_atomic_ksm()) || has_strict_mr,
                   has_strict_mr);
 
     status = uct_md_mem_dereg(md(), memh);
@@ -219,14 +220,40 @@ bool test_ib_md::has_ksm() const {
 #endif
 }
 
+bool test_ib_md::has_atomic_ksm() const {
+#if HAVE_DEVX
+    return has_ksm() &&
+           (m_mlx5_flags & UCT_IB_MLX5_MD_FLAG_INDIRECT_ATOMICS) &&
+           ib_md().config.enable_indirect_atomic;
+#else
+    return false;
+#endif
+}
+
 UCS_TEST_P(test_ib_md, ib_md_umr_ksm) {
     std::string rkey_buffer(md_attr().rkey_packed_size, '\0');
-    ib_md_umr_check(&rkey_buffer[0], has_ksm(), UCT_IB_MD_MAX_MR_SIZE + 0x1000);
+    ib_md_umr_check(&rkey_buffer[0], has_atomic_ksm(),
+                    UCT_IB_MD_MAX_MR_SIZE + 0x1000);
 }
 
 UCS_TEST_P(test_ib_md, relaxed_order, "IB_PCI_RELAXED_ORDERING=try") {
     std::string rkey_buffer(md_attr().rkey_packed_size, '\0');
 
+    ib_md_umr_check(&rkey_buffer[0], false);
+    ib_md_umr_check(&rkey_buffer[0], true);
+}
+
+UCS_TEST_P(test_ib_md, relaxed_order_only,
+           "IB_PCI_RELAXED_ORDERING=only")
+{
+    if (!has_atomic_ksm()) {
+        UCS_TEST_SKIP_R("atomic KSM is required");
+    }
+
+    EXPECT_TRUE(ib_md().relaxed_order);
+    EXPECT_TRUE(ib_md().relaxed_order_required);
+
+    std::string rkey_buffer(md_attr().rkey_packed_size, '\0');
     ib_md_umr_check(&rkey_buffer[0], false);
     ib_md_umr_check(&rkey_buffer[0], true);
 }

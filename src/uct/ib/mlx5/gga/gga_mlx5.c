@@ -421,10 +421,10 @@ static UCS_CLASS_INIT_FUNC(uct_gga_mlx5_ep_t, const uct_ep_params_t *params)
                                      access_flags);
 
     if (self->dma_opaque.mr == NULL) {
-        ucs_error("ibv_reg_mr(pd=%p, buf=%p, len=%d, 0x%lx) failed to register "
-                  "DMA/MMO opaque buffer: %m", md->super.pd,
+        ucs_error("ibv_reg_mr(pd=%p, buf=%p, len=%d, 0x%" PRIx64 ") failed "
+                  "to register DMA/MMO opaque buffer: %m", md->super.pd,
                   self->dma_opaque.buf, UCT_GGA_MLX5_OPAQUE_BUF_LEN,
-                  (unsigned long)access_flags);
+                  access_flags);
         status = UCS_ERR_IO_ERROR;
         goto err_free_buf;
     }

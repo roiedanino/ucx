@@ -1287,15 +1287,11 @@ ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
     md->relaxed_order_required = relaxed_order_required;
     if (relaxed_order_required) {
         if (!have_relaxed_order) {
-            if (is_required) {
-                ucs_error("%s: strong-order memory keys are not supported, but "
-                          "relaxed-order memory access is unavailable",
-                          uct_ib_device_name(&md->dev));
-            } else {
-                ucs_error("%s: IB_PCI_RELAXED_ORDERING=only requested, but "
-                          "IBV_ACCESS_RELAXED_ORDERING is not supported",
-                          uct_ib_device_name(&md->dev));
-            }
+            ucs_error("%s: relaxed-only memory keys required by %s, but "
+                      "IBV_ACCESS_RELAXED_ORDERING is unavailable",
+                      uct_ib_device_name(&md->dev),
+                      is_required ? "firmware" :
+                                    "IB_PCI_RELAXED_ORDERING=only");
             return is_required ? UCS_ERR_IO_ERROR : UCS_ERR_UNSUPPORTED;
         }
 

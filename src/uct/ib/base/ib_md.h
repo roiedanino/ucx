@@ -130,12 +130,16 @@ typedef struct {
 } uct_ib_mem_t;
 
 
+/**
+ * PCIe relaxed-ordering mode for IB memory registrations.
+ * Mirrors UCT_IB_PCI_RELAXED_ORDERING configuration values.
+ */
 typedef enum {
-    UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,
-    UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,
-    UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,
-    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO,
-    UCT_IB_RELAXED_ORDERING_ONLY
+    UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,   /**< Disable relaxed ordering */
+    UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,  /**< Enable; warn if unsupported */
+    UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,  /**< Enable when supported */
+    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware requirement; fall back to CPU preference */
+    UCT_IB_RELAXED_ORDERING_ONLY            /**< Force relaxed-only keys (no strict-order MR created) */
 } uct_ib_relaxed_ordering_t;
 
 
@@ -147,8 +151,9 @@ typedef struct {
 typedef enum {
     /* Default memory region with either strict or relaxed order */
     UCT_IB_MR_DEFAULT,
-    /* Additional memory region with strict order,
-     * if the default region is relaxed order */
+    /* Additional strict-order memory region allocated alongside the default
+     * relaxed-order MR, only when relaxed_order is set and
+     * relaxed_order_required is not (i.e. the device supports both modes) */
     UCT_IB_MR_STRICT_ORDER,
     UCT_IB_MR_LAST
 } uct_ib_mr_type_t;
@@ -173,7 +178,7 @@ typedef struct uct_ib_md {
     uint64_t                 subnet_filter;
     double                   pci_bw;
     uint64_t                 relaxed_order_mem_types;
-    int                      relaxed_order_required;
+    int                      relaxed_order_required; /**< Non-zero when firmware mandates relaxed-only keys */
     int                      fork_init;
     uint64_t                 reg_mem_types;
     uint64_t                 gva_mem_types;
@@ -223,7 +228,7 @@ typedef struct uct_ib_md_config {
     int                      mlx5dv; /**< mlx5 support */
     int                      devx; /**< DEVX support */
     uint64_t                 devx_objs;    /**< Objects to be created by DevX */
-    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Allow reorder memory accesses */
+    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Relaxed-ordering mode (no/yes/try/auto/only) */
     int                      enable_gpudirect_rdma; /**< Enable GPUDirect RDMA */
     int                      xgvmi_umr_enable; /**< Enable UMR workflow for XGVMI */
 } uct_ib_md_config_t;
@@ -387,6 +392,10 @@ uct_ib_memh_is_relaxed_order(uct_ib_md_t *md,
     return !!(md->relaxed_order_mem_types & UCS_BIT(mem_type));
 }
 
+/**
+ * Augment @a access_flags with IBV_ACCESS_RELAXED_ORDERING when the memory
+ * domain requires relaxed-only memory keys (relaxed_order_required is set).
+ */
 static UCS_F_ALWAYS_INLINE uint64_t
 uct_ib_md_access_flags(const uct_ib_md_t *md, uint64_t access_flags)
 {
@@ -418,6 +427,11 @@ static UCS_F_ALWAYS_INLINE uint8_t uct_ib_md_get_atomic_mr_id(uct_ib_md_t *md)
     return md->flush_rkey >> 8;
 }
 
+/**
+ * Return non-zero when relaxed-only memory keys are required, either because
+ * the firmware capability @a fw_required is set or the user selected
+ * UCT_IB_RELAXED_ORDERING_ONLY via configuration.
+ */
 static UCS_F_ALWAYS_INLINE int uct_ib_md_is_relaxed_order_required(
         const uct_ib_md_config_t *md_config, int fw_required)
 {
@@ -425,6 +439,19 @@ static UCS_F_ALWAYS_INLINE int uct_ib_md_is_relaxed_order_required(
            (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_ONLY);
 }
 
+/**
+ * Apply the relaxed-ordering configuration to @a md.
+ *
+ * @param md           IB memory domain being initialised.
+ * @param md_config    User configuration for the MD.
+ * @param is_supported Non-zero when the hardware/driver supports relaxed
+ *                     ordering (e.g. KSM indirect key can be created).
+ * @param is_required  Non-zero when the firmware requires relaxed-only keys
+ *                     (mkc_order_write_after_write_ro_only capability).
+ *
+ * @return UCS_OK on success, or an error if the requested mode is incompatible
+ *         with hardware capabilities.
+ */
 ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
                                            const uct_ib_md_config_t *md_config,
                                            int is_supported, int is_required);

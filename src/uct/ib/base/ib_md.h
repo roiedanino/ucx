@@ -138,8 +138,8 @@ typedef enum {
     UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,   /**< Disable relaxed ordering */
     UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,  /**< Enable; warn if unsupported */
     UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,  /**< Enable when supported */
-    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware requirement; fall back to CPU preference */
-    UCT_IB_RELAXED_ORDERING_ONLY            /**< Force relaxed-only keys (no strict-order MR created) */
+    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware requirement */
+    UCT_IB_RELAXED_ORDERING_ONLY            /**< Force relaxed-only keys */
 } uct_ib_relaxed_ordering_t;
 
 
@@ -178,7 +178,7 @@ typedef struct uct_ib_md {
     uint64_t                 subnet_filter;
     double                   pci_bw;
     uint64_t                 relaxed_order_mem_types;
-    int                      relaxed_order_required; /**< Non-zero when firmware mandates relaxed-only keys */
+    int                      relaxed_order_required; /**< Firmware required */
     int                      fork_init;
     uint64_t                 reg_mem_types;
     uint64_t                 gva_mem_types;
@@ -228,7 +228,7 @@ typedef struct uct_ib_md_config {
     int                      mlx5dv; /**< mlx5 support */
     int                      devx; /**< DEVX support */
     uint64_t                 devx_objs;    /**< Objects to be created by DevX */
-    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Relaxed-ordering mode (no/yes/try/auto/only) */
+    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Relaxed-ordering mode */
     int                      enable_gpudirect_rdma; /**< Enable GPUDirect RDMA */
     int                      xgvmi_umr_enable; /**< Enable UMR workflow for XGVMI */
 } uct_ib_md_config_t;

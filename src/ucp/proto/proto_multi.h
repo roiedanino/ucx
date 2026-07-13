@@ -119,6 +119,9 @@ typedef struct {
     /* Maximal number of lanes to select */
     ucp_lane_index_t               max_lanes;
 
+    /* Allow a GET operation to increase max_lanes from the transport report */
+    int                            max_lanes_is_auto;
+
     /* Minimal chunk size. It defines the minimal size of the fragment to split into
      * several parts. The goal is to not split below this limit */
     size_t                         min_chunk;

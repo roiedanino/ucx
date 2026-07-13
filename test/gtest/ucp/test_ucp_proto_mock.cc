@@ -277,6 +277,10 @@ private:
                                UCT_PERF_ATTR_FIELD_PATH_BANDWIDTH)) {
             perf_attr.path_bandwidth = perf_attr.bandwidth;
         }
+
+        if (perf_attr.field_mask & UCT_PERF_ATTR_FIELD_NUM_PATHS) {
+            perf_attr.num_paths = 1;
+        }
     }
 
     /* We have to use singleton to mock C functions */
@@ -460,6 +464,68 @@ protected:
         }
 
         return proto_select_data();
+    }
+
+    static proto_select_data
+    get_proto_select_data(const entity &e,
+                          const ucp_proto_select_t &proto_select,
+                          const ucp_proto_select_key_t &key,
+                          size_t msg_length)
+    {
+        proto_select_data result;
+        bool found = false;
+        ucp_proto_select_elem_t select_elem;
+        ucp_proto_select_key_t select_key;
+
+        kh_foreach(proto_select.hash, select_key.u64, select_elem, {
+            if (key_match(key, select_key)) {
+                auto data = select_data_for_range(e.worker(), select_elem,
+                                                  msg_length);
+                if (found) {
+                    EXPECT_EQ(result, data);
+                } else {
+                    result = data;
+                    found  = true;
+                }
+            }
+        })
+
+        EXPECT_TRUE(found);
+        return result;
+    }
+
+    static proto_select_data
+    get_ep_proto_select_data(const entity &e, ucp_proto_select_key_t key,
+                             size_t msg_length)
+    {
+        ucp_ep_config_t *config = ucp_worker_ep_config(e.worker(),
+                                                       ep_config_index(e));
+        return get_proto_select_data(e, config->proto_select, key, msg_length);
+    }
+
+    static proto_select_data
+    get_rkey_proto_select_data(const entity &e, ucp_proto_select_key_t key,
+                               size_t msg_length,
+                               ucp_worker_cfg_index_t rkey_cfg_index)
+    {
+        ucp_rkey_config_t *config = &ucs_array_elem(&e.worker()->rkey_config,
+                                                    rkey_cfg_index);
+        return get_proto_select_data(e, config->proto_select, key, msg_length);
+    }
+
+    static void expect_paths(const proto_select_data &data,
+                             unsigned expected_num_paths)
+    {
+        for (unsigned path_index = 0; path_index < 4; ++path_index) {
+            const std::string path = "path" + std::to_string(path_index);
+            if (path_index < expected_num_paths) {
+                EXPECT_NE(std::string::npos, data.config.find(path))
+                        << data;
+            } else {
+                EXPECT_EQ(std::string::npos, data.config.find(path))
+                        << data;
+            }
+        }
     }
 
     static void dump_select_info(const entity &e,
@@ -868,6 +934,122 @@ UCS_TEST_P(test_ucp_proto_mock_rcx, rma_put_2_lanes,
 }
 
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_rcx, rcx, "rc_x")
+
+class test_ucp_proto_mock_rcx_op_paths : public test_ucp_proto_mock {
+public:
+    test_ucp_proto_mock_rcx_op_paths()
+    {
+        mock_transport("rc_mlx5");
+    }
+
+    virtual void init() override
+    {
+        iface_attr_func_t iface_attr_func = [](uct_iface_attr_t &iface_attr) {
+            iface_attr.cap.am.max_short  = 208;
+            iface_attr.cap.put.max_short = 2048;
+            iface_attr.cap.get.max_zcopy = 16384;
+            iface_attr.bandwidth.shared  = 28e9;
+            iface_attr.latency.c         = 500e-9;
+            iface_attr.latency.m         = 1e-9;
+            iface_attr.dev_num_paths     = 4;
+        };
+        perf_attr_func_t perf_attr_func = [](uct_perf_attr_t &perf_attr) {
+            if (perf_attr.field_mask & UCT_PERF_ATTR_FIELD_NUM_PATHS) {
+                perf_attr.num_paths =
+                        uct_ep_op_is_get(perf_attr.operation) ? 4 : 1;
+            }
+        };
+
+        add_mock_iface("mock_0:1", iface_attr_func, perf_attr_func);
+        test_ucp_proto_mock::init();
+    }
+
+protected:
+    proto_select_data get_rndv_config(size_t msg_length)
+    {
+        send_recv_am(msg_length);
+
+        ucp_proto_select_key_t key = any_key();
+        key.param.op_id_flags      = UCP_OP_ID_AM_SEND;
+        key.param.op_attr          = 0;
+        return get_ep_proto_select_data(sender(), key, msg_length);
+    }
+
+    proto_select_data get_rma_config(ucp_operation_id_t op_id,
+                                     size_t msg_length)
+    {
+        const ucp_worker_cfg_index_t rkey_cfg_index =
+                send_recv_rma(msg_length, op_id);
+
+        ucp_proto_select_key_t key = any_key();
+        key.param.op_id_flags      = op_id;
+        key.param.op_attr          = 0;
+        return get_rkey_proto_select_data(sender(), key, msg_length,
+                                          rkey_cfg_index);
+    }
+};
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rndv_get_auto_4_paths,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4",
+           "MAX_RNDV_RAILS=auto", "RNDV_SCHEME=get_zcopy", "RNDV_THRESH=0")
+{
+    const proto_select_data data = get_rndv_config(UCS_MBYTE);
+
+    EXPECT_EQ("rendezvous zero-copy read from remote", data.desc);
+    expect_paths(data, 4);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rndv_put_auto_2_paths,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4",
+           "MAX_RNDV_RAILS=auto", "RNDV_SCHEME=put_zcopy", "RNDV_THRESH=0")
+{
+    const proto_select_data data = get_rndv_config(UCS_MBYTE);
+
+    EXPECT_EQ("rendezvous zero-copy fenced write to remote", data.desc);
+    expect_paths(data, 2);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rma_get_auto_4_paths,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4",
+           "MAX_RMA_RAILS=auto", "ZCOPY_THRESH=0")
+{
+    const proto_select_data data = get_rma_config(UCP_OP_ID_GET, UCS_MBYTE);
+
+    EXPECT_EQ("zero-copy", data.desc);
+    expect_paths(data, 4);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rma_put_auto_1_path,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4",
+           "MAX_RMA_RAILS=auto", "ZCOPY_THRESH=0")
+{
+    const proto_select_data data = get_rma_config(UCP_OP_ID_PUT, UCS_MBYTE);
+
+    EXPECT_EQ("zero-copy", data.desc);
+    expect_paths(data, 1);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rndv_get_explicit_2_path_cap,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4", "MAX_RNDV_LANES=2",
+           "RNDV_SCHEME=get_zcopy", "RNDV_THRESH=0")
+{
+    const proto_select_data data = get_rndv_config(UCS_MBYTE);
+
+    EXPECT_EQ("rendezvous zero-copy read from remote", data.desc);
+    expect_paths(data, 2);
+}
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_op_paths, rma_get_explicit_2_path_cap,
+           "NET_DEVICES=mock_0:1", "IB_NUM_PATHS?=4", "MAX_RMA_RAILS=2",
+           "ZCOPY_THRESH=0")
+{
+    const proto_select_data data = get_rma_config(UCP_OP_ID_GET, UCS_MBYTE);
+
+    EXPECT_EQ("zero-copy", data.desc);
+    expect_paths(data, 2);
+}
+
+UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_rcx_op_paths, rcx, "rc_x")
 
 class test_ucp_proto_mock_rcx2 : public test_ucp_proto_mock {
 public:

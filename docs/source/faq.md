@@ -245,8 +245,10 @@ Yes.
 
 #### What is the default behavior in a multi-rail environment?
 
-By default UCX would pick the 2 best network devices, and split large 
-messages between the rails. For example, in a 100MB message - the 1st 50MB
+By default, `UCX_MAX_RNDV_RAILS=auto` lets UCX pick up to the 2 best network
+devices. With protocol v2, a transport can request additional paths when a
+specific operation needs them to reach the reported bandwidth. UCX splits large
+messages between the selected rails. For example, in a 100MB message - the 1st 50MB
 would be sent on the 1st device, and the 2nd 50MB would be sent on the 2nd device.
 If the device network speeds are not the same, the split will be proportional to
 their speed ratio.
@@ -256,7 +258,8 @@ and NUMA locality.
 
 #### Is it possible to use more than 2 rails?
 
-Yes, by setting `UCX_MAX_RNDV_RAILS=<num-rails>`. Currently up to 4 are supported.
+Yes, by setting `UCX_MAX_RNDV_RAILS=<num-rails>`. An explicit value is a hard
+limit and overrides the automatic transport recommendation.
 
 #### Is it possible that each process would just use the closest device?
 

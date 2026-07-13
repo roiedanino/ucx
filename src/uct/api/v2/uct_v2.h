@@ -99,7 +99,10 @@ enum uct_perf_attr_field {
     UCT_PERF_ATTR_FIELD_MAX_INFLIGHT_EPS   = UCS_BIT(11),
 
     /** Enable @ref uct_perf_attr_t::flags */
-    UCT_PERF_ATTR_FIELD_FLAGS              = UCS_BIT(12)
+    UCT_PERF_ATTR_FIELD_FLAGS              = UCS_BIT(12),
+
+    /** Enable @ref uct_perf_attr_t::num_paths */
+    UCT_PERF_ATTR_FIELD_NUM_PATHS          = UCS_BIT(13)
 };
 
 /**
@@ -216,6 +219,14 @@ typedef struct {
      * Performance characteristics of the network interface.
      */
     uint64_t            flags;
+
+    /**
+     * Number of interface paths needed to achieve the bandwidth reported for
+     * the requested operation. This value is at least one and does not exceed
+     * @ref uct_iface_attr_t::dev_num_paths.
+     * This field is set by the UCT layer.
+     */
+    unsigned            num_paths;
 } uct_perf_attr_t;
 
 

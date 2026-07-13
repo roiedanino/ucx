@@ -80,6 +80,78 @@ void test_uct_ib::send_recv_short() {
 
 size_t test_uct_ib::m_ib_am_handler_counter = 0;
 
+class test_uct_ib_num_paths : public test_uct_ib {
+protected:
+    bool is_cx9_xdr() const
+    {
+        uct_ib_iface_t *iface = ucs_derived_of(m_e1->iface(),
+                                                uct_ib_iface_t);
+        uct_ib_device_t *dev   = uct_ib_iface_device(iface);
+
+        return uct_ib_iface_port_is_xdr(iface) &&
+               (dev->pci_id.vendor == 0x15b3) &&
+               (dev->pci_id.device == 4133);
+    }
+
+    void check_num_paths(unsigned expected_get_num_paths) const
+    {
+        uct_perf_attr_t perf_attr = {};
+
+        perf_attr.field_mask = UCT_PERF_ATTR_FIELD_OPERATION |
+                               UCT_PERF_ATTR_FIELD_NUM_PATHS;
+        perf_attr.operation  = UCT_EP_OP_GET_ZCOPY;
+        ASSERT_UCS_OK(uct_iface_estimate_perf(m_e1->iface(), &perf_attr));
+        EXPECT_EQ(expected_get_num_paths, perf_attr.num_paths);
+
+        perf_attr.operation = UCT_EP_OP_PUT_ZCOPY;
+        ASSERT_UCS_OK(uct_iface_estimate_perf(m_e1->iface(), &perf_attr));
+        EXPECT_EQ(1u, perf_attr.num_paths);
+    }
+};
+
+UCS_TEST_P(test_uct_ib_num_paths, estimate_perf, "IB_NUM_PATHS=auto")
+{
+    check_num_paths(is_cx9_xdr() ? 4 : 1);
+    if (is_cx9_xdr()) {
+        uct_ib_iface_t *iface = ucs_derived_of(m_e1->iface(),
+                                                uct_ib_iface_t);
+
+        EXPECT_NE(0u, uct_ib_iface_device(iface)->flags &
+                      UCT_IB_DEVICE_FLAG_XDR_READ_4_PATHS);
+        EXPECT_GE(m_e1->iface_attr().dev_num_paths, 4u);
+    }
+}
+
+UCS_TEST_P(test_uct_ib_num_paths, estimate_perf_configured_limit,
+           "IB_NUM_PATHS=2")
+{
+    check_num_paths(2);
+    EXPECT_EQ(2u, m_e1->iface_attr().dev_num_paths);
+}
+
+UCS_TEST_P(test_uct_ib_num_paths, estimate_perf_configured_override,
+           "IB_NUM_PATHS=8")
+{
+    check_num_paths(8);
+    EXPECT_EQ(8u, m_e1->iface_attr().dev_num_paths);
+}
+
+UCS_TEST_P(test_uct_ib_num_paths, configured_zero_rejected,
+           "IB_NUM_PATHS=1")
+{
+    uct_iface_h iface = NULL;
+
+    ASSERT_UCS_OK(uct_config_modify(m_iface_config, "IB_NUM_PATHS", "0"));
+
+    scoped_log_handler slh(wrap_errors_logger);
+    EXPECT_EQ(UCS_ERR_INVALID_PARAM,
+              uct_iface_open(m_e1->md(), m_e1->worker(),
+                             &m_e1->iface_params(), m_iface_config, &iface));
+    EXPECT_EQ(NULL, iface);
+}
+
+UCT_INSTANTIATE_IB_TEST_CASE(test_uct_ib_num_paths);
+
 class test_uct_ib_addr : public test_uct_ib {
 public:
     uct_ib_iface_config_t *ib_config() {

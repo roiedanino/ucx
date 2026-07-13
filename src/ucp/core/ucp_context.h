@@ -60,6 +60,10 @@ typedef enum {
 } ucp_reg_devices_mode_t;
 
 
+#define UCP_MAX_RNDV_LANES_DEFAULT 2
+#define UCP_MAX_RMA_LANES_DEFAULT  1
+
+
 static UCS_F_ALWAYS_INLINE ucp_reg_devices_mode_t
 ucp_reg_devices_mode(unsigned long max_hca_per_gpu)
 {
@@ -150,8 +154,12 @@ typedef struct ucp_context_config {
     int                                    adaptive_progress;
     /** Eager-am multi-lane support */
     unsigned                               max_eager_lanes;
+    /** Raw rendezvous lane limit before resolving the auto value */
+    unsigned long                          max_rndv_lanes_config;
     /** Rendezvous-get multi-lane support */
     unsigned                               max_rndv_lanes;
+    /** Raw RMA lane limit before resolving the auto value */
+    unsigned long                          max_rma_lanes_config;
     /** RMA multi-lane support */
     unsigned                               max_rma_lanes;
     /** Minimum allowed chunk size when splitting rndv message over multiple

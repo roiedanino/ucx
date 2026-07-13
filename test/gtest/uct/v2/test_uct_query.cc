@@ -104,6 +104,18 @@ UCS_TEST_P(test_uct_query, query_perf)
     }
 }
 
+UCS_TEST_P(test_uct_query, num_paths_default)
+{
+    auto perf_attr               = init_perf_attr();
+    perf_attr.field_mask        |= UCT_PERF_ATTR_FIELD_NUM_PATHS;
+    perf_attr.operation          = UCT_EP_OP_PUT_SHORT;
+    perf_attr.remote_memory_type = UCS_MEMORY_TYPE_CUDA;
+
+    ASSERT_UCS_OK(iface_estimate_perf(&perf_attr));
+    EXPECT_GE(perf_attr.num_paths, 1u);
+    EXPECT_LE(perf_attr.num_paths, get_iface_attr().dev_num_paths);
+}
+
 UCT_INSTANTIATE_TEST_CASE(test_uct_query)
 
 class test_uct_query_ib : public test_uct_query {

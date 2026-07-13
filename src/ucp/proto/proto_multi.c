@@ -311,7 +311,7 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
     ucp_proto_common_tl_perf_t *lane_perf, perf;
     ucp_lane_index_t lanes[UCP_PROTO_MAX_LANES];
     double max_bandwidth, max_frag_ratio, min_bandwidth;
-    ucp_lane_index_t i, lane, num_lanes, num_fast_lanes;
+    ucp_lane_index_t i, lane, num_lanes, num_fast_lanes, max_lanes;
     ucp_proto_multi_lane_priv_t *lpriv;
     size_t max_frag, min_end_offset, min_chunk;
     size_t UCS_V_UNUSED min_length;
@@ -408,9 +408,21 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
                 lanes);
     }
 
+    max_lanes = params->max_lanes;
+    if (params->max_lanes_is_auto &&
+        ((params->super.send_op == UCT_EP_OP_GET_BCOPY) ||
+         (params->super.send_op == UCT_EP_OP_GET_ZCOPY))) {
+        for (i = 0; i < num_lanes; ++i) {
+            max_lanes = ucs_max(
+                    max_lanes,
+                    ucs_min(lanes_perf[lanes[i]].num_paths,
+                            UCP_PROTO_MAX_LANES));
+        }
+    }
+
     ucp_proto_multi_select_bw_lanes(&params->super.super, lanes, num_lanes,
-                                    params->max_lanes, lanes_perf,
-                                    fixed_first_lane, &selection);
+                                    max_lanes, lanes_perf, fixed_first_lane,
+                                    &selection);
 
     ucs_trace("selected %u lanes for %s", selection.num_lanes,
               ucp_proto_id_field(params->super.super.proto_id, name));

@@ -200,12 +200,14 @@ ucs_config_field_t uct_ib_md_config_table[] = {
     {"PCI_RELAXED_ORDERING", "auto",
      "Control relaxed ordering for PCIe transactions:\n"
      "  no    - disable relaxed ordering\n"
-     "  yes   - request relaxed ordering and warn if it is unsupported\n"
-     "  try   - enable relaxed ordering when supported\n"
+     "  yes   - enable relaxed ordering, retain strict-order companion keys "
+     "when available, and warn if relaxed ordering is unsupported\n"
+     "  try   - enable relaxed ordering when supported, retain strict-order "
+     "companion keys when available, and silently continue if unsupported\n"
      "  auto  - honor a firmware relaxed-only requirement, otherwise use "
      "the CPU preference\n"
-     "  only  - force relaxed-only memory keys regardless of the firmware "
-     "capability\n",
+     "  only  - require all memory keys to use relaxed ordering and do not "
+     "create strict-order companion keys\n",
      ucs_offsetof(uct_ib_md_config_t, mr_relaxed_order),
      UCT_IB_CONFIG_TYPE_RELAXED_ORDER},
 

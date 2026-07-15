@@ -50,35 +50,6 @@ static const char *uct_ib_devx_objs[] = {
     NULL
 };
 
-static int uct_ib_md_config_sscanf_relaxed_order(const char *buf, void *dest,
-                                                  const void *arg)
-{
-    if (!strcasecmp(buf, "only")) {
-        *(uct_ib_relaxed_ordering_t*)dest = UCT_IB_RELAXED_ORDERING_ONLY;
-        return 1;
-    }
-
-    return ucs_config_sscanf_ternary_auto(buf, dest, arg);
-}
-
-static int uct_ib_md_config_sprintf_relaxed_order(char *buf, size_t max,
-                                                   const void *src,
-                                                   const void *arg)
-{
-    if (*(const uct_ib_relaxed_ordering_t*)src ==
-        UCT_IB_RELAXED_ORDERING_ONLY) {
-        return snprintf(buf, max, "only");
-    }
-
-    return ucs_config_sprintf_ternary_auto(buf, max, src, arg);
-}
-
-#define UCT_IB_CONFIG_TYPE_RELAXED_ORDER \
-    {uct_ib_md_config_sscanf_relaxed_order, \
-     uct_ib_md_config_sprintf_relaxed_order, ucs_config_clone_int, \
-     ucs_config_release_nop, ucs_config_help_generic, ucs_config_doc_nop, \
-     "<yes|no|try|auto|only>"}
-
 ucs_config_field_t uct_ib_md_config_table[] = {
     {"", "", NULL,
      ucs_offsetof(uct_ib_md_config_t, super), UCS_CONFIG_TYPE_TABLE(uct_md_config_table)},
@@ -200,16 +171,14 @@ ucs_config_field_t uct_ib_md_config_table[] = {
     {"PCI_RELAXED_ORDERING", "auto",
      "Control relaxed ordering for PCIe transactions:\n"
      "  no    - disable relaxed ordering\n"
-     "  yes   - enable relaxed ordering, retain strict-order companion keys "
-     "when available, and warn if relaxed ordering is unsupported\n"
+     "  yes   - require all memory keys to use relaxed ordering, fail if "
+     "unsupported, and do not create strict-order companion keys\n"
      "  try   - enable relaxed ordering when supported, retain strict-order "
      "companion keys when available, and silently continue if unsupported\n"
      "  auto  - honor a firmware relaxed-only requirement, otherwise use "
-     "the CPU preference\n"
-     "  only  - require all memory keys to use relaxed ordering and do not "
-     "create strict-order companion keys\n",
+     "the CPU preference\n",
      ucs_offsetof(uct_ib_md_config_t, mr_relaxed_order),
-     UCT_IB_CONFIG_TYPE_RELAXED_ORDER},
+     UCS_CONFIG_TYPE_TERNARY_AUTO},
 
     {"MAX_IDLE_RKEY_COUNT", "16",
      "Maximal number of invalidated memory keys that are kept idle before reuse.",
@@ -1293,29 +1262,20 @@ ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,
                       "IBV_ACCESS_RELAXED_ORDERING is unavailable",
                       uct_ib_device_name(&md->dev),
                       is_required ? "firmware" :
-                                    "IB_PCI_RELAXED_ORDERING=only");
+                                    "IB_PCI_RELAXED_ORDERING=yes");
             return is_required ? UCS_ERR_IO_ERROR : UCS_ERR_UNSUPPORTED;
         }
 
-        if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_NO) {
+        if (md_config->mr_relaxed_order == UCS_NO) {
             ucs_error("%s: strong-order memory keys are not supported; "
                       "IB_PCI_RELAXED_ORDERING=n is invalid",
                       uct_ib_device_name(&md->dev));
             return UCS_ERR_INVALID_PARAM;
         }
 
-    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_YES) {
-        if (have_relaxed_order) {
-            mem_types = all_mem_types;
-        } else {
-            ucs_warn("%s: relaxed order memory access requested, but "
-                     "unsupported",
-                     uct_ib_device_name(&md->dev));
-            return UCS_OK;
-        }
-    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_TRY) {
+    } else if (md_config->mr_relaxed_order == UCS_TRY) {
         mem_types = have_relaxed_order ? all_mem_types : 0;
-    } else if (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_AUTO) {
+    } else if (md_config->mr_relaxed_order == UCS_AUTO) {
         mem_types = have_relaxed_order ?
                     uct_ib_md_relaxed_order_auto_mem_types(
                             ucs_arch_get_cpu_vendor(), ucs_arch_get_cpu_model()) :

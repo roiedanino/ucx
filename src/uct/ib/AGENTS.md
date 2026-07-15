@@ -52,7 +52,7 @@ at runtime.
   in `ib_md.c`.
 - When building `access_flags` for a direct `ibv_reg_mr` call (bypassing
   `uct_ib_reg_mr`), wrap the flags with `uct_ib_md_access_flags()` so that
-  `IBV_ACCESS_RELAXED_ORDERING` is automatically set on relaxed-only devices
+  `IBV_ACCESS_RELAXED_ORDERING` is automatically set in relaxed-only mode
   (`relaxed_order_required`).
 - DMABUF FD ownership: when `mem_reg`/`mem_advise` accepts a DMABUF FD, the
   caller retains ownership. Register paths must compute the offset from

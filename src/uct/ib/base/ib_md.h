@@ -130,21 +130,6 @@ typedef struct {
 } uct_ib_mem_t;
 
 
-/**
- * PCIe relaxed-ordering mode for IB memory registrations.
- * Mirrors UCT_IB_PCI_RELAXED_ORDERING configuration values.
- */
-typedef enum {
-    UCT_IB_RELAXED_ORDERING_NO   = UCS_NO,   /**< Disable relaxed ordering */
-    UCT_IB_RELAXED_ORDERING_YES  = UCS_YES,  /**< Enable; warn if unsupported */
-    UCT_IB_RELAXED_ORDERING_TRY  = UCS_TRY,  /**< Enable when supported */
-    UCT_IB_RELAXED_ORDERING_AUTO = UCS_AUTO, /**< Honor firmware relaxed-only
-                                               *   requirement; otherwise derive
-                                               *   from CPU preference */
-    UCT_IB_RELAXED_ORDERING_ONLY            /**< Force relaxed-only keys */
-} uct_ib_relaxed_ordering_t;
-
-
 typedef struct {
     struct ibv_mr           *ib;
 } uct_ib_mr_t;
@@ -155,7 +140,7 @@ typedef enum {
     UCT_IB_MR_DEFAULT,
     /* Additional strict-order memory region allocated alongside the default
      * relaxed-order MR, only when relaxed_order is set and
-     * relaxed_order_required is not (i.e. the device supports both modes) */
+     * relaxed_order_required is not (i.e. the policy allows both modes) */
     UCT_IB_MR_STRICT_ORDER,
     UCT_IB_MR_LAST
 } uct_ib_mr_type_t;
@@ -230,7 +215,7 @@ typedef struct uct_ib_md_config {
     int                      mlx5dv; /**< mlx5 support */
     int                      devx; /**< DEVX support */
     uint64_t                 devx_objs;    /**< Objects to be created by DevX */
-    uct_ib_relaxed_ordering_t mr_relaxed_order; /**< Relaxed-ordering mode */
+    ucs_ternary_auto_value_t  mr_relaxed_order; /**< Relaxed-ordering mode */
     int                      enable_gpudirect_rdma; /**< Enable GPUDirect RDMA */
     int                      xgvmi_umr_enable; /**< Enable UMR workflow for XGVMI */
 } uct_ib_md_config_t;
@@ -348,11 +333,10 @@ static inline uint16_t uct_ib_md_atomic_offset(uint8_t atomic_mr_id)
 /**
  * Return the MR type to use for atomic operations on @a md.
  *
- * When relaxed ordering is enabled but NOT required (i.e. the device provides
- * both a relaxed-order default MR and a companion strict-order MR), atomics
- * must use the strict-order MR (@c UCT_IB_MR_STRICT_ORDER). In all other
- * cases, relaxed ordering is either disabled or required, and the default MR
- * is used.
+ * When relaxed ordering is enabled but NOT required, the memory domain has a
+ * relaxed-order default MR and a companion strict-order MR. Atomics must use
+ * the strict-order MR (@c UCT_IB_MR_STRICT_ORDER). In all other cases, relaxed
+ * ordering is either disabled or required, and the default MR is used.
  */
 static UCS_F_ALWAYS_INLINE uct_ib_mr_type_t
 uct_ib_memh_get_atomic_mr_type(const uct_ib_mem_t *memh)
@@ -441,13 +425,12 @@ static UCS_F_ALWAYS_INLINE uint8_t uct_ib_md_get_atomic_mr_id(uct_ib_md_t *md)
 /**
  * Return non-zero when relaxed-only memory keys are required, either because
  * the firmware capability @a fw_required is set or the user selected
- * UCT_IB_RELAXED_ORDERING_ONLY via configuration.
+ * UCS_YES via configuration.
  */
 static UCS_F_ALWAYS_INLINE int uct_ib_md_is_relaxed_order_required(
         const uct_ib_md_config_t *md_config, int fw_required)
 {
-    return fw_required ||
-           (md_config->mr_relaxed_order == UCT_IB_RELAXED_ORDERING_ONLY);
+    return fw_required || (md_config->mr_relaxed_order == UCS_YES);
 }
 
 /**

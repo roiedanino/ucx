@@ -2651,9 +2651,9 @@ ucs_status_t uct_ib_mlx5_devx_md_open_common(const char *name, size_t size,
 
     }
 
-    /* Optional relaxed ordering requires an indirect strict-order key. A
-     * relaxed-only device cannot create that key and uses the default key for
-     * all access instead. */
+    /* Optional relaxed ordering requires an indirect strict-order key.
+     * Relaxed-only policy omits that key and uses the default key for all
+     * access instead. */
     status = uct_ib_md_parse_relaxed_order(
             &md->super, md_config, ksm_atomic || relaxed_order_required,
             relaxed_order_required);

@@ -243,8 +243,8 @@ UCS_TEST_P(test_ib_md, relaxed_order, "IB_PCI_RELAXED_ORDERING=try") {
     ib_md_umr_check(&rkey_buffer[0], true);
 }
 
-UCS_TEST_P(test_ib_md, relaxed_order_only,
-           "IB_PCI_RELAXED_ORDERING=only")
+UCS_TEST_P(test_ib_md, relaxed_order_yes,
+           "IB_PCI_RELAXED_ORDERING=yes")
 {
     if (!has_atomic_ksm()) {
         UCS_TEST_SKIP_R("atomic KSM is required");
@@ -258,21 +258,28 @@ UCS_TEST_P(test_ib_md, relaxed_order_only,
     ib_md_umr_check(&rkey_buffer[0], true);
 }
 
-UCS_TEST_P(test_ib_md, relaxed_order_only_config) {
+UCS_TEST_P(test_ib_md, relaxed_order_required_config) {
     uct_ib_md_config_t *md_config;
 
     ASSERT_UCS_OK(uct_config_modify(m_md_config, "IB_PCI_RELAXED_ORDERING",
-                                    "only"));
+                                    "yes"));
     md_config = ucs_derived_of((uct_md_config_t*)m_md_config,
                                uct_ib_md_config_t);
-    EXPECT_EQ(UCT_IB_RELAXED_ORDERING_ONLY, md_config->mr_relaxed_order);
+    EXPECT_EQ(UCS_YES, md_config->mr_relaxed_order);
     EXPECT_TRUE(uct_ib_md_is_relaxed_order_required(md_config, 0));
 
     ASSERT_UCS_OK(uct_config_modify(m_md_config, "IB_PCI_RELAXED_ORDERING",
                                     "auto"));
-    EXPECT_EQ(UCT_IB_RELAXED_ORDERING_AUTO, md_config->mr_relaxed_order);
+    EXPECT_EQ(UCS_AUTO, md_config->mr_relaxed_order);
     EXPECT_FALSE(uct_ib_md_is_relaxed_order_required(md_config, 0));
     EXPECT_TRUE(uct_ib_md_is_relaxed_order_required(md_config, 1));
+
+    {
+        scoped_log_handler slh(hide_errors_logger);
+        EXPECT_EQ(UCS_ERR_INVALID_PARAM,
+                  uct_config_modify(m_md_config, "IB_PCI_RELAXED_ORDERING",
+                                    "only"));
+    }
 }
 
 UCS_TEST_P(test_ib_md, aligned) {

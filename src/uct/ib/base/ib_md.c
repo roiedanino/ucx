@@ -30,7 +30,6 @@
 #include <pthread_np.h>
 #endif
 #include <sys/resource.h>
-#include <strings.h>
 
 
 #define UCT_IB_MD_RCACHE_DEFAULT_ALIGN 16
@@ -1230,18 +1229,22 @@ static void uct_ib_md_log_relaxed_order(uct_ib_md_t *md)
 {
     UCS_STRING_BUFFER_ONSTACK(strb, 128);
 
+    if (md->relaxed_order_required) {
+        ucs_debug("%s: relaxed order memory access is required for all MRs",
+                  uct_ib_device_name(&md->dev));
+        return;
+    }
+
     if (!uct_ib_md_is_relaxed_order(md)) {
-        ucs_debug("%s: relaxed order memory access is disabled%s",
-                  uct_ib_device_name(&md->dev),
-                  md->relaxed_order_required ? " (required)" : "");
+        ucs_debug("%s: relaxed order memory access is disabled",
+                  uct_ib_device_name(&md->dev));
         return;
     }
 
     ucs_string_buffer_append_flags(&strb, md->relaxed_order_mem_types,
                                    ucs_memory_type_names);
-    ucs_debug("%s: relaxed order memory access is enabled for %s%s",
-              uct_ib_device_name(&md->dev), ucs_string_buffer_cstr(&strb),
-              md->relaxed_order_required ? " (required)" : "");
+    ucs_debug("%s: relaxed order memory access is enabled for %s",
+              uct_ib_device_name(&md->dev), ucs_string_buffer_cstr(&strb));
 }
 
 ucs_status_t uct_ib_md_parse_relaxed_order(uct_ib_md_t *md,

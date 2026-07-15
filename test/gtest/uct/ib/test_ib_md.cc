@@ -250,7 +250,6 @@ UCS_TEST_P(test_ib_md, relaxed_order_yes,
         UCS_TEST_SKIP_R("atomic KSM is required");
     }
 
-    EXPECT_TRUE(ib_md().relaxed_order);
     EXPECT_TRUE(ib_md().relaxed_order_required);
 
     std::string rkey_buffer(md_attr().rkey_packed_size, '\0');

@@ -943,7 +943,6 @@ static int uct_ib_mlx5_devx_memh_has_strict_order_mr(
     return memh->super.flags & UCT_IB_MEM_RELAXED_ORDER;
 }
 
-
 static ucs_status_t
 uct_ib_mlx5_devx_mem_reg_gva(uct_md_h uct_md, unsigned flags, uct_mem_h *memh_p)
 {

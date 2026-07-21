@@ -611,11 +611,11 @@ ucs_status_t uct_ib_mem_advise(uct_md_h uct_md, uct_mem_h memh, void *addr,
 }
 
 ucs_status_t uct_ib_memh_alloc(uct_ib_md_t *md, size_t length,
-                               unsigned mem_flags, int relaxed_order,
+                               unsigned mem_flags, int strict_order_mr,
                                size_t memh_base_size, size_t mr_size,
                                uct_ib_mem_t **memh_p)
 {
-    int num_mrs = relaxed_order ?
+    int num_mrs = strict_order_mr ?
                           2 /* UCT_IB_MR_DEFAULT and UCT_IB_MR_STRICT_ORDER */ :
                           1 /* UCT_IB_MR_DEFAULT */;
     uct_ib_mem_t *memh;
@@ -649,8 +649,8 @@ ucs_status_t uct_ib_memh_alloc(uct_ib_md_t *md, size_t length,
         memh->flags |= UCT_IB_MEM_FLAG_GVA;
     }
 
-    if (relaxed_order) {
-        memh->flags |= UCT_IB_MEM_RELAXED_ORDER;
+    if (strict_order_mr) {
+        memh->flags |= UCT_IB_MEM_STRICT_ORDER_MR;
     }
 
     *memh_p = memh;
@@ -675,8 +675,8 @@ ucs_status_t uct_ib_verbs_mem_reg(uct_md_h uct_md, void *address, size_t length,
                                   const uct_md_mem_reg_params_t *params,
                                   uct_mem_h *memh_p)
 {
-    uct_ib_md_t *md   = ucs_derived_of(uct_md, uct_ib_md_t);
-    int relaxed_order = uct_ib_memh_is_relaxed_order(md, params);
+    uct_ib_md_t *md     = ucs_derived_of(uct_md, uct_ib_md_t);
+    int strict_order_mr = uct_ib_md_needs_strict_order_mr(md, params);
     struct ibv_mr *mr_default;
     uct_ib_verbs_mem_t *memh;
     uct_ib_mem_t *ib_memh;
@@ -686,14 +686,14 @@ ucs_status_t uct_ib_verbs_mem_reg(uct_md_h uct_md, void *address, size_t length,
     status = uct_ib_memh_alloc(md, length,
                                UCT_MD_MEM_REG_FIELD_VALUE(params, flags,
                                                           FIELD_FLAGS, 0),
-                               relaxed_order, sizeof(*memh),
+                               strict_order_mr, sizeof(*memh),
                                sizeof(memh->mrs[0]), &ib_memh);
     if (status != UCS_OK) {
         goto err;
     }
 
     memh         = ucs_derived_of(ib_memh, uct_ib_verbs_mem_t);
-    access_flags = uct_ib_memh_access_flags(&memh->super, relaxed_order,
+    access_flags = uct_ib_memh_access_flags(&memh->super, strict_order_mr,
                                             md->dev.mr_access_flags);
 
     status = uct_ib_reg_mr(md, address, length, params, access_flags, NULL,
@@ -706,7 +706,7 @@ ucs_status_t uct_ib_verbs_mem_reg(uct_md_h uct_md, void *address, size_t length,
     memh->super.rkey                = mr_default->rkey;
     memh->mrs[UCT_IB_MR_DEFAULT].ib = mr_default;
 
-    if (relaxed_order) {
+    if (strict_order_mr) {
         status = uct_ib_reg_mr(md, address, length, params,
                                access_flags & ~IBV_ACCESS_RELAXED_ORDERING,
                                NULL, &memh->mrs[UCT_IB_MR_STRICT_ORDER].ib);
@@ -740,7 +740,7 @@ uct_ib_verbs_mem_dereg(uct_md_h uct_md, const uct_md_mem_dereg_params_t *params)
 
     memh = params->memh;
 
-    if (memh->super.flags & UCT_IB_MEM_RELAXED_ORDER) {
+    if (uct_ib_memh_uses_strict_order_mr(&memh->super)) {
         status = uct_ib_dereg_mr(memh->mrs[UCT_IB_MR_STRICT_ORDER].ib);
         if (status != UCS_OK) {
             return status;

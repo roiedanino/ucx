@@ -77,8 +77,9 @@ enum {
                                                         GVA region */
     UCT_IB_MEM_DIRECT_NIC            = UCS_BIT(6), /**< The memory handle was
                                                         registered using Direct NIC */
-    UCT_IB_MEM_RELAXED_ORDER         = UCS_BIT(7), /**< Relaxed ordering is enabled
-                                                        for this memory handle */
+    UCT_IB_MEM_STRICT_ORDER_MR       = UCS_BIT(7), /**< A strict-order MR is
+                                                        allocated alongside the
+                                                        relaxed-order default MR */
 };
 
 enum {
@@ -329,9 +330,15 @@ static inline uint16_t uct_ib_md_atomic_offset(uint8_t atomic_mr_id)
     return 8 * atomic_mr_id;
 }
 
+static UCS_F_ALWAYS_INLINE int
+uct_ib_memh_uses_strict_order_mr(const uct_ib_mem_t *memh)
+{
+    return !!(memh->flags & UCT_IB_MEM_STRICT_ORDER_MR);
+}
+
 
 /**
- * Return the MR type to use for atomic operations on @a md.
+ * Return the MR type to use for atomic operations on @a memh.
  *
  * When relaxed ordering is enabled but NOT required, the memory domain has a
  * relaxed-order default MR and a companion strict-order MR. Atomics must use
@@ -341,7 +348,7 @@ static inline uint16_t uct_ib_md_atomic_offset(uint8_t atomic_mr_id)
 static UCS_F_ALWAYS_INLINE uct_ib_mr_type_t
 uct_ib_memh_get_atomic_mr_type(const uct_ib_mem_t *memh)
 {
-    return (memh->flags & UCT_IB_MEM_RELAXED_ORDER) ?
+    return uct_ib_memh_uses_strict_order_mr(memh) ?
            UCT_IB_MR_STRICT_ORDER : UCT_IB_MR_DEFAULT;
 }
 
@@ -369,8 +376,8 @@ uct_ib_md_is_relaxed_order(const uct_ib_md_t *md)
 }
 
 static UCS_F_ALWAYS_INLINE int
-uct_ib_memh_is_relaxed_order(uct_ib_md_t *md,
-                             const uct_md_mem_reg_params_t *params)
+uct_ib_md_needs_strict_order_mr(
+        const uct_ib_md_t *md, const uct_md_mem_reg_params_t *params)
 {
     ucs_memory_type_t mem_type;
 
@@ -532,7 +539,7 @@ ucs_status_t uct_ib_fork_init(const uct_ib_md_config_t *md_config,
                               int *fork_init_p);
 
 ucs_status_t uct_ib_memh_alloc(uct_ib_md_t *md, size_t length,
-                               unsigned mem_flags, int relaxed_order,
+                               unsigned mem_flags, int strict_order_mr,
                                size_t memh_base_size, size_t mr_size,
                                uct_ib_mem_t **memh_p);
 

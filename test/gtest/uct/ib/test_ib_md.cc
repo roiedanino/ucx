@@ -71,31 +71,35 @@ TEST(test_ib_md_relaxed_order_policy, auto_mem_types)
                       UCS_CPU_VENDOR_INTEL, UCS_CPU_MODEL_INTEL_ICELAKE));
 }
 
-TEST(test_ib_md_relaxed_order_policy, memh_mem_type)
+TEST(test_ib_md_relaxed_order_policy, strict_order_mr_mem_type)
 {
     uct_md_mem_reg_params_t params = {};
     uct_ib_md_t md                 = {};
 
     md.relaxed_order_mem_types = UCS_BIT(UCS_MEMORY_TYPE_CUDA);
 
-    EXPECT_FALSE(uct_ib_memh_is_relaxed_order(&md, NULL));
-    EXPECT_FALSE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, NULL));
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
 
     params.field_mask = UCT_MD_MEM_REG_FIELD_MEM_TYPE;
     params.mem_type   = UCS_MEMORY_TYPE_CUDA;
-    EXPECT_TRUE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_TRUE(uct_ib_md_needs_strict_order_mr(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_HOST;
-    EXPECT_FALSE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_CUDA;
-    EXPECT_TRUE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_TRUE(uct_ib_md_needs_strict_order_mr(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_RDMA;
-    EXPECT_FALSE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_HOST;
-    EXPECT_FALSE(uct_ib_memh_is_relaxed_order(&md, &params));
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+
+    md.relaxed_order_required = 1;
+    params.mem_type           = UCS_MEMORY_TYPE_CUDA;
+    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
 }
 
 void test_ib_md::init() {

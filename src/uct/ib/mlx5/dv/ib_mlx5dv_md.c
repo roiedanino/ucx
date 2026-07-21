@@ -805,6 +805,7 @@ uct_ib_mlx5_direct_nic_reg_mr(uct_ib_mlx5_md_t *md, void *address,
 
     dmabuf_offset = UCS_PARAM_VALUE(UCT_MD_MEM_REG_FIELD, params, dmabuf_offset,
                                     DMABUF_OFFSET, 0);
+    access_flags  = uct_ib_md_access_flags(&md->super, access_flags);
     start_time    = ucs_get_time();
 
     mr = UCS_PROFILE_CALL_ALWAYS(mlx5dv_reg_dmabuf_mr, md->super.pd, 0,
@@ -834,7 +835,7 @@ uct_ib_mlx5_devx_memh_has_ro(uct_ib_mlx5_md_t *md,
         return md->flags & UCT_IB_MLX5_MD_FLAG_GVA_RO;
     }
 
-    return memh->super.flags & UCT_IB_MEM_RELAXED_ORDER;
+    return uct_ib_memh_uses_strict_order_mr(&memh->super);
 }
 
 static ucs_status_t
@@ -929,20 +930,6 @@ uct_ib_mlx5_devx_memh_alloc(uct_ib_mlx5_md_t *md, size_t length,
     return UCS_OK;
 }
 
-static int uct_ib_mlx5_devx_memh_has_strict_order_mr(
-        uct_ib_mlx5_md_t *md, uct_ib_mlx5_devx_mem_t *memh)
-{
-    if (md->super.relaxed_order_required) {
-        return 0;
-    }
-
-    if (memh->super.flags & UCT_IB_MEM_FLAG_GVA) {
-        return md->flags & UCT_IB_MLX5_MD_FLAG_GVA_RO;
-    }
-
-    return memh->super.flags & UCT_IB_MEM_RELAXED_ORDER;
-}
-
 static ucs_status_t
 uct_ib_mlx5_devx_mem_reg_gva(uct_md_h uct_md, unsigned flags, uct_mem_h *memh_p)
 {
@@ -952,11 +939,14 @@ uct_ib_mlx5_devx_mem_reg_gva(uct_md_h uct_md, unsigned flags, uct_mem_h *memh_p)
     uint64_t access_flags;
     ucs_status_t status;
     int relaxed_order;
+    int strict_order_mr;
 
     relaxed_order = md->flags & UCT_IB_MLX5_MD_FLAG_GVA_RO;
+    strict_order_mr = relaxed_order && !md->super.relaxed_order_required;
     status = uct_ib_mlx5_devx_memh_alloc(md, SIZE_MAX,
                                          UCT_MD_MEM_FLAG_NONBLOCK | flags,
-                                         relaxed_order, sizeof(memh->mrs[0]),
+                                         strict_order_mr,
+                                         sizeof(memh->mrs[0]),
                                          &memh);
     if (status != UCS_OK) {
         goto err;
@@ -970,7 +960,7 @@ uct_ib_mlx5_devx_mem_reg_gva(uct_md_h uct_md, unsigned flags, uct_mem_h *memh_p)
         goto err_reg;
     }
 
-    if (relaxed_order && !md->super.relaxed_order_required) {
+    if (strict_order_mr) {
         status = uct_ib_reg_mr(&md->super, NULL, SIZE_MAX, &params,
                                access_flags & ~IBV_ACCESS_RELAXED_ORDERING,
                                NULL,
@@ -1003,15 +993,15 @@ uct_ib_mlx5_devx_mem_reg(uct_md_h uct_md, void *address, size_t length,
     uct_ib_mlx5_devx_mem_t *memh;
     ucs_status_t status;
     uint32_t dummy_mkey;
-    int relaxed_order;
+    int strict_order_mr;
 
     if (flags & UCT_MD_MEM_GVA) {
         return uct_ib_mlx5_devx_mem_reg_gva(uct_md, flags, memh_p);
     }
 
-    relaxed_order = uct_ib_memh_is_relaxed_order(&md->super, params);
-    status        = uct_ib_mlx5_devx_memh_alloc(md, length, flags,
-                                                relaxed_order,
+    strict_order_mr =
+            uct_ib_md_needs_strict_order_mr(&md->super, params);
+    status = uct_ib_mlx5_devx_memh_alloc(md, length, flags, strict_order_mr,
                                          sizeof(memh->mrs[0]), &memh);
     if (status != UCS_OK) {
         goto err;
@@ -1028,7 +1018,7 @@ uct_ib_mlx5_devx_mem_reg(uct_md_h uct_md, void *address, size_t length,
         uct_ib_mlx5_devx_reg_symmetric(md, memh, address);
     }
 
-    if (uct_ib_mlx5_devx_memh_has_strict_order_mr(md, memh)) {
+    if (uct_ib_memh_uses_strict_order_mr(&memh->super)) {
         status = uct_ib_mlx5_devx_reg_mr(md, memh, address, length, params,
                                          UCT_IB_MR_STRICT_ORDER,
                                          ~IBV_ACCESS_RELAXED_ORDERING,
@@ -1696,7 +1686,7 @@ uct_ib_mlx5_devx_mem_dereg(uct_md_h uct_md,
     }
 
     if (!(memh->super.flags & UCT_IB_MEM_IMPORTED)) {
-        if (uct_ib_mlx5_devx_memh_has_strict_order_mr(md, memh)) {
+        if (uct_ib_memh_uses_strict_order_mr(&memh->super)) {
             status = uct_ib_mlx5_devx_dereg_mr(md, memh,
                                                UCT_IB_MR_STRICT_ORDER);
             if (status != UCS_OK) {
@@ -3017,7 +3007,7 @@ uct_ib_mlx5_devx_mkey_pack(uct_md_h uct_md, uct_mem_h uct_memh,
      */
     if (ucs_unlikely(memh->atomic_dvmr == NULL) &&
         ((memh->super.flags & UCT_IB_MEM_ACCESS_REMOTE_ATOMIC) ||
-         uct_ib_mlx5_devx_memh_has_strict_order_mr(md, memh)) &&
+         uct_ib_memh_uses_strict_order_mr(&memh->super)) &&
         !(memh->super.flags & UCT_IB_MEM_IMPORTED) &&
         !(memh->super.flags & UCT_IB_MEM_DIRECT_NIC) &&
         md->super.config.enable_indirect_atomic &&

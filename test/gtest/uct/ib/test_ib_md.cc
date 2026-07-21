@@ -78,28 +78,28 @@ TEST(test_ib_md_relaxed_order_policy, strict_order_mr_mem_type)
 
     md.relaxed_order_mem_types = UCS_BIT(UCS_MEMORY_TYPE_CUDA);
 
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, NULL));
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, NULL));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     params.field_mask = UCT_MD_MEM_REG_FIELD_MEM_TYPE;
     params.mem_type   = UCS_MEMORY_TYPE_CUDA;
-    EXPECT_TRUE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_TRUE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_HOST;
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_CUDA;
-    EXPECT_TRUE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_TRUE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_RDMA;
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     params.mem_type = UCS_MEMORY_TYPE_HOST;
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 
     md.relaxed_order_required = 1;
     params.mem_type           = UCS_MEMORY_TYPE_CUDA;
-    EXPECT_FALSE(uct_ib_md_needs_strict_order_mr(&md, &params));
+    EXPECT_FALSE(uct_ib_md_is_strict_order_mr_required(&md, &params));
 }
 
 void test_ib_md::init() {

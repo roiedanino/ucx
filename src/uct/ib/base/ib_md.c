@@ -676,7 +676,8 @@ ucs_status_t uct_ib_verbs_mem_reg(uct_md_h uct_md, void *address, size_t length,
                                   uct_mem_h *memh_p)
 {
     uct_ib_md_t *md     = ucs_derived_of(uct_md, uct_ib_md_t);
-    int strict_order_mr = uct_ib_md_needs_strict_order_mr(md, params);
+    int strict_order_mr =
+            uct_ib_md_is_strict_order_mr_required(md, params);
     struct ibv_mr *mr_default;
     uct_ib_verbs_mem_t *memh;
     uct_ib_mem_t *ib_memh;

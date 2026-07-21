@@ -376,7 +376,7 @@ uct_ib_md_is_relaxed_order(const uct_ib_md_t *md)
 }
 
 static UCS_F_ALWAYS_INLINE int
-uct_ib_md_needs_strict_order_mr(
+uct_ib_md_is_strict_order_mr_required(
         const uct_ib_md_t *md, const uct_md_mem_reg_params_t *params)
 {
     ucs_memory_type_t mem_type;

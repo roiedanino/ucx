@@ -231,7 +231,6 @@ ucp_proto_multi_select_bw_lanes(const ucp_proto_init_params_t *params,
                                 unsigned req_sys_dev_ord,
                                 ucp_proto_lane_selection_t *selection)
 {
-    ucs_sys_device_t req_sys_dev = params->select_param->sys_dev;
     ucp_lane_index_t i, lane_index;
     ucp_lane_map_t index_map;
 
@@ -242,8 +241,10 @@ ucp_proto_multi_select_bw_lanes(const ucp_proto_init_params_t *params,
 
     ucs_trace("select bw lanes: proto %s req_sys_dev=%d (%s) "
               "bdf_class_ordinal=%u",
-              ucp_proto_id_field(params->proto_id, name), req_sys_dev,
-              ucs_topo_sys_device_get_name(req_sys_dev), req_sys_dev_ord);
+              ucp_proto_id_field(params->proto_id, name),
+              params->select_param->sys_dev,
+              ucs_topo_sys_device_get_name(params->select_param->sys_dev),
+              req_sys_dev_ord);
 
     if (fixed_first_lane) {
         ucp_proto_select_add_lane(selection, params, lanes[0]);

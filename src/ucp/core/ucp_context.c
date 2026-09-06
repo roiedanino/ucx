@@ -2441,6 +2441,8 @@ ucp_context_resolve_max_lanes(const char *config_name,
 {
     if (config_value == UCS_ULUNITS_AUTO) {
         *value_p = default_value;
+    } else if (config_value == UCS_ULUNITS_INF) {
+        *value_p = UCP_MAX_LANES;
     } else if (config_value > UCP_MAX_LANES) {
         ucs_error("%s must not exceed %u", config_name, UCP_MAX_LANES);
         return UCS_ERR_INVALID_PARAM;

@@ -1553,10 +1553,6 @@ public:
     }
 
 protected:
-    enum {
-        NUM_MESSAGES = 2000
-    };
-
     struct purge_ctx {
         test_rc_purge_outstanding *self;
         uct_ep_h                  ep;
@@ -1577,32 +1573,76 @@ protected:
         return ucs_test_all_flags(attr.cap.flags, required_flags);
     }
 
-    void post_op(uct_ep_h ep, uct_completion_t *comp,
-                 const send_func_t &send_func)
+    static ucs_status_t post_op(uct_ep_h ep, uct_completion_t *comp,
+                                const send_func_t &send_func)
     {
         ucs_status_t status;
 
-        do {
-            ++comp->count;
-            status = send_func(ep, comp);
-            if (status == UCS_INPROGRESS) {
-                return;
-            }
-
+        ++comp->count;
+        status = send_func(ep, comp);
+        if (status != UCS_INPROGRESS) {
             --comp->count;
-            if (status == UCS_OK) {
-                return;
+        }
+
+        return status;
+    }
+
+    static void post_flush(uct_ep_h ep, uct_completion_t *comp)
+    {
+        ucs_status_t status;
+
+        ++comp->count;
+        status = uct_ep_flush(ep, 0, comp);
+        if (status != UCS_INPROGRESS) {
+            --comp->count;
+            UCS_TEST_ABORT("flush is not outstanding: "
+                           << ucs_status_string(status));
+        }
+    }
+
+    static uint32_t post_ops(uct_ep_h ep, uct_completion_t *comp,
+                             uct_completion_t *flush_comp,
+                             const send_func_t &send_func)
+    {
+        uct_rc_mlx5_base_ep_t *rc_ep =
+                ucs_derived_of(ep, uct_rc_mlx5_base_ep_t);
+        uct_ep_invalidate_params_t invalidate_params = {};
+        uint32_t count                              = 0;
+        bool invalidated                            = false;
+        ucs_status_t status;
+
+        while (true) {
+            status = post_op(ep, comp, send_func);
+            if (status == UCS_ERR_NO_RESOURCE) {
+                if (!invalidated) {
+                    UCS_TEST_ABORT("send resources exhausted before endpoint "
+                                   "invalidation");
+                }
+
+                return count;
             }
 
-            if (status != UCS_ERR_NO_RESOURCE) {
+            if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
                 UCS_TEST_ABORT(ucs_status_string(status));
             }
 
-            short_progress_loop();
-        } while (status == UCS_ERR_NO_RESOURCE);
+            ++count;
+            if (!invalidated &&
+                (uct_rc_txqp_available(&rc_ep->super.txqp) <=
+                 (rc_ep->tx.wq.bb_max / 2))) {
+                post_flush(ep, flush_comp);
+                status = uct_ep_invalidate(ep, &invalidate_params);
+                if (status != UCS_OK) {
+                    UCS_TEST_ABORT("failed to invalidate endpoint: "
+                                   << ucs_status_string(status));
+                }
+
+                invalidated = true;
+            }
+        }
     }
 
-    void send_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
+    void replay_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
     {
         ASSERT_TRUE(info->field_mask & UCT_EP_OP_INFO_FIELD_OPERATION);
 
@@ -1611,6 +1651,8 @@ protected:
             UCS_TEST_ABORT("unsupported operation " << info->operation);
         }
 
+        /* This base intentionally has no supported replay operation. */
+        /* coverity[unreachable] */
         ++ctx->num_replayed;
     }
 
@@ -1627,7 +1669,7 @@ protected:
     {
         purge_ctx *ctx = static_cast<purge_ctx*>(arg);
 
-        ctx->self->send_op(info, ctx);
+        ctx->self->replay_op(info, ctx);
     }
 
     static void completion_cb(uct_completion_t*)
@@ -1657,36 +1699,14 @@ protected:
         ASSERT_UCS_OK(uct_iface_query_v2(iface, &attr));
     }
 
-    static void ensure_undelivered(uct_ep_h ep,
-                                   uct_rc_mlx5_rx_token_t *rx_token)
-    {
-        uct_rc_mlx5_base_ep_t *rc_ep =
-                ucs_derived_of(ep, uct_rc_mlx5_base_ep_t);
-        uint32_t receiver_next_psn = be32toh(*rx_token) & UCS_MASK(24);
-
-        if (receiver_next_psn ==
-            uct_ib_mlx5_txwq_get_next_wqe_psn(&rc_ep->tx.wq)) {
-            *rx_token = htobe32((receiver_next_psn - 1) & UCS_MASK(24));
-        }
-    }
-
-    void purge_outstanding(purge_ctx *ctx, uct_completion_t *flush_comp)
+    void purge_outstanding(purge_ctx *ctx)
     {
         uct_ep_outstanding_purge_params_t purge_params = {};
-        uct_ep_invalidate_params_t invalidate_params   = {};
         uct_rc_mlx5_tx_token_t tx_token                = {};
         uct_rc_mlx5_rx_token_t rx_token                = {};
 
-        ASSERT_UCS_OK(uct_ep_invalidate(m_e1->ep(0), &invalidate_params));
-        EXPECT_EQ(UCS_INPROGRESS,
-                  uct_ep_flush(m_e1->ep(0), 0, flush_comp));
-
-        wait_for_flag(&m_err_count);
-        ASSERT_EQ(1u, m_err_count);
-
         query_tx_token(m_e1->ep(0), &tx_token);
         query_rx_token(m_e2->iface(), &tx_token, &rx_token);
-        ensure_undelivered(m_e1->ep(0), &rx_token);
 
         purge_params.field_mask = UCT_EP_OUTSTANDING_FIELD_RX_TOKEN |
                                   UCT_EP_OUTSTANDING_FIELD_CB |
@@ -1705,27 +1725,31 @@ protected:
                          m_e1->ep(1),
                          {completion_cb, 0, UCS_OK},
                          0};
-        uct_completion_t flush_comp = {completion_cb, 1, UCS_OK};
+        uct_completion_t flush_comp = {completion_cb, 0, UCS_OK};
+        uint32_t num_posted;
 
         if (!check_caps(UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE) ||
             !check_caps_v2(UCT_IFACE_FLAG_V2_QUERY_TOKEN)) {
             UCS_TEST_SKIP_R("UCT endpoint outstanding purge is not supported");
         }
 
-        for (unsigned i = 0; i < NUM_MESSAGES; ++i) {
-            post_op(m_e1->ep(0), &ctx.comp, send_func);
-        }
+        num_posted = post_ops(m_e1->ep(0), &ctx.comp, &flush_comp, send_func);
+        ASSERT_GT(num_posted, 0u);
 
-        purge_outstanding(&ctx, &flush_comp);
+        wait_for_flag(&m_err_count);
+        ASSERT_EQ(1u, m_err_count);
+
+        purge_outstanding(&ctx);
 
         EXPECT_GT(ctx.num_replayed, 0u);
-        EXPECT_LE(ctx.num_replayed, static_cast<uint32_t>(NUM_MESSAGES));
+        EXPECT_LT(ctx.num_replayed, num_posted);
+
+        wait_for_value(&flush_comp.count, 0, true);
+        EXPECT_EQ(UCS_ERR_CANCELED, flush_comp.status);
 
         flush();
 
         EXPECT_EQ(0, ctx.comp.count);
-        EXPECT_EQ(0, flush_comp.count);
-        EXPECT_EQ(UCS_ERR_CANCELED, flush_comp.status);
         EXPECT_EQ(ep->tx.wq.bb_max,
                   uct_rc_txqp_available(&ep->super.txqp));
     }

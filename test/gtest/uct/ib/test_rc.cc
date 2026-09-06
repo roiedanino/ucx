@@ -1549,15 +1549,13 @@ public:
         m_e2 = uct_test::create_entity(0, err_handler);
         m_entities.push_back(m_e2);
         connect();
-        m_e1->connect(1, *m_e2, 1);
     }
 
 protected:
     struct purge_ctx {
         test_rc_purge_outstanding *self;
-        uct_ep_h                  ep;
         uct_completion_t          comp;
-        uint32_t                  num_replayed;
+        uint32_t                  num_purged;
     };
 
     using send_func_t =
@@ -1642,18 +1640,16 @@ protected:
         }
     }
 
-    void replay_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
+    void validate_op(const uct_ep_op_info_t *info, uint32_t op_index)
     {
         ASSERT_TRUE(info->field_mask & UCT_EP_OP_INFO_FIELD_OPERATION);
 
         switch (info->operation) {
         default:
-            UCS_TEST_ABORT("unsupported operation " << info->operation);
+            UCS_TEST_ABORT("unsupported operation " << info->operation
+                                                     << " at index "
+                                                     << op_index);
         }
-
-        /* This base intentionally has no supported replay operation. */
-        /* coverity[unreachable] */
-        ++ctx->num_replayed;
     }
 
     static ucs_status_t err_handler(void *arg, uct_ep_h, ucs_status_t)
@@ -1669,7 +1665,7 @@ protected:
     {
         purge_ctx *ctx = static_cast<purge_ctx*>(arg);
 
-        ctx->self->replay_op(info, ctx);
+        ctx->self->validate_op(info, ctx->num_purged++);
     }
 
     static void completion_cb(uct_completion_t*)
@@ -1721,10 +1717,7 @@ protected:
     {
         uct_rc_mlx5_base_ep_t *ep =
                 ucs_derived_of(m_e1->ep(0), uct_rc_mlx5_base_ep_t);
-        purge_ctx ctx = {this,
-                         m_e1->ep(1),
-                         {completion_cb, 0, UCS_OK},
-                         0};
+        purge_ctx ctx               = {this, {completion_cb, 0, UCS_OK}, 0};
         uct_completion_t flush_comp = {completion_cb, 0, UCS_OK};
         uint32_t num_posted;
 
@@ -1741,8 +1734,8 @@ protected:
 
         purge_outstanding(&ctx);
 
-        EXPECT_GT(ctx.num_replayed, 0u);
-        EXPECT_LT(ctx.num_replayed, num_posted);
+        EXPECT_GT(ctx.num_purged, 0u);
+        EXPECT_LT(ctx.num_purged, num_posted);
 
         wait_for_value(&flush_comp.count, 0, true);
         EXPECT_EQ(UCS_ERR_CANCELED, flush_comp.status);

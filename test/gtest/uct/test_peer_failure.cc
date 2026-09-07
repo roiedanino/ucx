@@ -462,14 +462,23 @@ protected:
         }
     }
 
-    void validate_op(const uct_ep_op_info_t *info, uint32_t op_index)
+    void validate_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
     {
         switch (info->operation) {
+        case UCT_EP_OP_FLUSH:
+            validate_flush(info, ctx);
+            return;
         default:
+            if (info->field_mask & UCT_EP_OP_INFO_FIELD_COMP) {
+                EXPECT_EQ(&ctx->op_comp, info->comp);
+            }
+
             UCS_TEST_ABORT("unsupported operation " << info->operation
                                                      << " at index "
-                                                     << op_index);
+                                                     << ctx->num_ops_purged);
         }
+
+        ++ctx->num_ops_purged;
     }
 
     static void validate_flush(const uct_ep_op_info_t *info, purge_ctx *ctx)
@@ -507,19 +516,7 @@ protected:
         ASSERT_LT(static_cast<unsigned>(info->operation),
                   static_cast<unsigned>(UCT_EP_OP_LAST));
 
-        switch (info->operation) {
-        case UCT_EP_OP_FLUSH:
-            validate_flush(info, ctx);
-            break;
-        default:
-            if (info->field_mask & UCT_EP_OP_INFO_FIELD_COMP) {
-                EXPECT_EQ(&ctx->op_comp, info->comp);
-            }
-
-            ctx->self->validate_op(info, ctx->num_ops_purged);
-            ++ctx->num_ops_purged;
-            break;
-        }
+        ctx->self->validate_op(info, ctx);
     }
 
     static void completion_cb(uct_completion_t*)

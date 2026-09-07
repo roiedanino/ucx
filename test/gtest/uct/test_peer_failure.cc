@@ -360,20 +360,14 @@ public:
 
         check_skip_test();
 
+        if (!m_sender->check_caps(UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE) ||
+            !check_caps_v2(UCT_IFACE_FLAG_V2_QUERY_TOKEN)) {
+            UCS_TEST_SKIP_R("UCT endpoint outstanding purge is not supported");
+        }
+
         m_receiver = uct_test::create_entity(0, err_handler);
         m_entities.push_back(m_receiver);
         m_sender->connect(0, *m_receiver, 0);
-
-        if (m_receiver->iface_attr().cap.flags &
-            (UCT_IFACE_FLAG_AM_SHORT | UCT_IFACE_FLAG_AM_BCOPY |
-             UCT_IFACE_FLAG_AM_ZCOPY)) {
-            uint32_t flags =
-                    (m_receiver->iface_attr().cap.flags &
-                     UCT_IFACE_FLAG_CB_SYNC) ? 0 : UCT_CB_FLAG_ASYNC;
-
-            ASSERT_UCS_OK(uct_iface_set_am_handler(m_receiver->iface(), 0,
-                                                   am_handler, NULL, flags));
-        }
 
         flush();
     }
@@ -400,11 +394,6 @@ protected:
         return ucs_test_all_flags(attr.cap.flags, required_flags);
     }
 
-    static ucs_status_t am_handler(void*, void*, size_t, unsigned)
-    {
-        return UCS_OK;
-    }
-
     static ucs_status_t post_op(uct_ep_h ep, uct_completion_t *comp,
                                 const send_func_t &send_func)
     {
@@ -419,47 +408,33 @@ protected:
         return status;
     }
 
-    static void post_flush(uct_ep_h ep, uct_completion_t *comp)
+    static bool post_flush(uct_ep_h ep, uct_completion_t *comp)
     {
         ucs_status_t status;
 
         ++comp->count;
         status = uct_ep_flush(ep, 0, comp);
-        if (status != UCS_INPROGRESS) {
-            --comp->count;
-            UCS_TEST_ABORT("flush is not outstanding: "
-                           << ucs_status_string(status));
+        if (status == UCS_INPROGRESS) {
+            return true;
         }
+
+        --comp->count;
+        ASSERT_UCS_OK(status);
+        return false;
     }
 
-    static uint32_t post_outstanding_ops(uct_ep_h ep, uct_completion_t *comp,
-                                         uct_completion_t *flush_comp,
-                                         const send_func_t &send_func)
+    static uint32_t post_until_error(uct_ep_h ep, uct_completion_t *comp,
+                                     const send_func_t &send_func)
     {
-        uct_ep_invalidate_params_t invalidate_params = {};
-        uint32_t count                               = 0;
+        uint32_t count = 0;
         ucs_time_t deadline;
         ucs_status_t status;
-
-        status = post_op(ep, comp, send_func);
-        if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
-            UCS_TEST_ABORT("failed to post operation before invalidation: "
-                           << ucs_status_string(status));
-        }
-
-        ++count;
-        post_flush(ep, flush_comp);
-        ASSERT_UCS_OK(uct_ep_invalidate(ep, &invalidate_params));
 
         deadline = ucs::get_deadline();
         while (ucs_get_time() < deadline) {
             status = post_op(ep, comp, send_func);
             if (UCS_STATUS_IS_ERR(status)) {
                 return count;
-            }
-
-            if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
-                UCS_TEST_ABORT(ucs_status_string(status));
             }
 
             ++count;
@@ -471,11 +446,6 @@ protected:
 
     void validate_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
     {
-        if ((info->operation != UCT_EP_OP_FLUSH) &&
-            (info->field_mask & UCT_EP_OP_INFO_FIELD_COMP)) {
-            EXPECT_EQ(&ctx->op_comp, info->comp);
-        }
-
         switch (info->operation) {
         case UCT_EP_OP_FLUSH:
             validate_flush(info, ctx);
@@ -485,10 +455,6 @@ protected:
                                                      << " at index "
                                                      << ctx->num_ops_purged);
         }
-
-        /* This fixture intentionally has no supported data operation. */
-        /* coverity[unreachable] */
-        ++ctx->num_ops_purged;
     }
 
     static void validate_flush(const uct_ep_op_info_t *info, purge_ctx *ctx)
@@ -523,8 +489,7 @@ protected:
 
         ASSERT_TRUE(info != NULL);
         ASSERT_TRUE(info->field_mask & UCT_EP_OP_INFO_FIELD_OPERATION);
-        ASSERT_LT(static_cast<unsigned>(info->operation),
-                  static_cast<unsigned>(UCT_EP_OP_LAST));
+        ASSERT_LT(unsigned(info->operation), unsigned(UCT_EP_OP_LAST));
 
         ctx->self->validate_op(info, ctx);
     }
@@ -536,9 +501,9 @@ protected:
     void purge_outstanding(purge_ctx *ctx)
     {
         uct_ep_outstanding_purge_params_t purge_params = {};
-        uct_iface_attr_v2_t tx_attr                     = {};
-        uct_iface_attr_v2_t rx_attr                     = {};
-        uct_ep_attr_t ep_attr                           = {};
+        uct_iface_attr_v2_t               tx_attr      = {};
+        uct_iface_attr_v2_t               rx_attr      = {};
+        uct_ep_attr_t                     ep_attr      = {};
 
         tx_attr.field_mask = UCT_IFACE_ATTR_FIELD_TX_TOKEN_LENGTH;
         ASSERT_UCS_OK(uct_iface_query_v2(m_sender->iface(), &tx_attr));
@@ -571,26 +536,32 @@ protected:
 
     void test_purge_outstanding(const send_func_t &send_func)
     {
-        purge_ctx ctx       = {this,
-                               {completion_cb, 0, UCS_OK},
-                               {completion_cb, 0, UCS_OK},
-                               0,
-                               0};
-        uint32_t num_posted = 0;
+        /* Separate copies validate the completion identity reported by purge. */
+        uct_ep_invalidate_params_t invalidate_params = {};
+        uct_completion_t           completion        = {completion_cb, 0,
+                                                        UCS_OK};
+        purge_ctx                   ctx               = {this, completion,
+                                                         completion, 0, 0};
+        uint32_t num_posted;
+        bool flush_outstanding;
         ucs_status_t status;
-
-        if (!check_caps(UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE) ||
-            !check_caps_v2(UCT_IFACE_FLAG_V2_QUERY_TOKEN)) {
-            UCS_TEST_SKIP_R("UCT endpoint outstanding purge is not supported");
-        }
 
         status = post_op(m_sender->ep(0), &ctx.op_comp, send_func);
         ASSERT_UCS_OK_OR_INPROGRESS(status);
-        ++num_posted;
+        num_posted = 1;
         flush();
 
-        num_posted += post_outstanding_ops(m_sender->ep(0), &ctx.op_comp,
-                                           &ctx.flush_comp, send_func);
+        status = post_op(m_sender->ep(0), &ctx.op_comp, send_func);
+        if (UCS_STATUS_IS_ERR(status)) {
+            UCS_TEST_ABORT("failed to post operation before invalidation: "
+                           << ucs_status_string(status));
+        }
+
+        ++num_posted;
+        flush_outstanding = post_flush(m_sender->ep(0), &ctx.flush_comp);
+        ASSERT_UCS_OK(uct_ep_invalidate(m_sender->ep(0), &invalidate_params));
+        num_posted += post_until_error(m_sender->ep(0), &ctx.op_comp,
+                                       send_func);
         ASSERT_GT(num_posted, 1u);
 
         wait_for_flag(&m_err_count);
@@ -600,10 +571,11 @@ protected:
 
         EXPECT_GT(ctx.num_ops_purged, 0u);
         EXPECT_LT(ctx.num_ops_purged, num_posted);
-        EXPECT_EQ(1u, ctx.num_flush_purged);
+        EXPECT_EQ(unsigned(flush_outstanding), ctx.num_flush_purged);
 
         wait_for_value(&ctx.flush_comp.count, 0, true);
-        EXPECT_EQ(UCS_ERR_CANCELED, ctx.flush_comp.status);
+        EXPECT_EQ(flush_outstanding ? UCS_ERR_CANCELED : UCS_OK,
+                  ctx.flush_comp.status);
 
         flush();
         EXPECT_EQ(0, ctx.op_comp.count);

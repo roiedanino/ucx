@@ -436,6 +436,7 @@ protected:
     {
         uct_ep_invalidate_params_t invalidate_params = {};
         uint32_t count                               = 0;
+        ucs_time_t deadline;
         ucs_status_t status;
 
         status = post_op(ep, comp, send_func);
@@ -448,7 +449,8 @@ protected:
         post_flush(ep, flush_comp);
         ASSERT_UCS_OK(uct_ep_invalidate(ep, &invalidate_params));
 
-        while (true) {
+        deadline = ucs::get_deadline();
+        while (ucs_get_time() < deadline) {
             status = post_op(ep, comp, send_func);
             if (UCS_STATUS_IS_ERR(status)) {
                 return count;
@@ -460,6 +462,9 @@ protected:
 
             ++count;
         }
+
+        UCS_TEST_ABORT("operation remained postable after endpoint "
+                       "invalidation");
     }
 
     void validate_op(const uct_ep_op_info_t *info, purge_ctx *ctx)

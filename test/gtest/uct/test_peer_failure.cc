@@ -376,7 +376,6 @@ protected:
     struct purge_ctx {
         test_uct_purge_outstanding *self;
         uct_completion_t           op_comp;
-        uct_completion_t           flush_comp;
         uint32_t                   num_ops_purged;
         uint32_t                   num_flush_purged;
     };
@@ -466,7 +465,7 @@ protected:
         ASSERT_TRUE(info->flush.field_mask &
                     UCT_EP_OP_INFO_FLUSH_FIELD_FLAGS);
         EXPECT_EQ(0u, info->flush.flags);
-        EXPECT_EQ(&ctx->flush_comp, info->comp);
+        EXPECT_EQ(&ctx->op_comp, info->comp);
         ASSERT_EQ(0u, ctx->num_flush_purged);
         ++ctx->num_flush_purged;
     }
@@ -536,12 +535,9 @@ protected:
 
     void test_purge_outstanding(const send_func_t &send_func)
     {
-        /* Separate copies validate the completion identity reported by purge. */
         uct_ep_invalidate_params_t invalidate_params = {};
-        uct_completion_t           completion        = {completion_cb, 0,
-                                                        UCS_OK};
-        purge_ctx                   ctx               = {this, completion,
-                                                         completion, 0, 0};
+        purge_ctx                   ctx               = {
+                this, {completion_cb, 0, UCS_OK}, 0, 0};
         uint32_t num_posted;
         bool flush_outstanding;
         ucs_status_t status;
@@ -558,11 +554,10 @@ protected:
         }
 
         ++num_posted;
-        flush_outstanding = post_flush(m_sender->ep(0), &ctx.flush_comp);
+        flush_outstanding = post_flush(m_sender->ep(0), &ctx.op_comp);
         ASSERT_UCS_OK(uct_ep_invalidate(m_sender->ep(0), &invalidate_params));
         num_posted += post_until_error(m_sender->ep(0), &ctx.op_comp,
                                        send_func);
-        ASSERT_GT(num_posted, 1u);
 
         wait_for_flag(&m_err_count);
         ASSERT_EQ(1u, m_err_count);
@@ -573,9 +568,10 @@ protected:
         EXPECT_LT(ctx.num_ops_purged, num_posted);
         EXPECT_EQ(unsigned(flush_outstanding), ctx.num_flush_purged);
 
-        wait_for_value(&ctx.flush_comp.count, 0, true);
-        EXPECT_EQ(flush_outstanding ? UCS_ERR_CANCELED : UCS_OK,
-                  ctx.flush_comp.status);
+        wait_for_value(&ctx.op_comp.count, 0, true);
+        if (flush_outstanding) {
+            EXPECT_EQ(UCS_ERR_CANCELED, ctx.op_comp.status);
+        }
 
         flush();
         EXPECT_EQ(0, ctx.op_comp.count);

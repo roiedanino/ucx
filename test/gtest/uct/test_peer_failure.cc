@@ -364,7 +364,9 @@ public:
         m_entities.push_back(m_receiver);
         m_sender->connect(0, *m_receiver, 0);
 
-        if (m_receiver->iface_attr().cap.flags & UCT_IFACE_FLAG_AM_SHORT) {
+        if (m_receiver->iface_attr().cap.flags &
+            (UCT_IFACE_FLAG_AM_SHORT | UCT_IFACE_FLAG_AM_BCOPY |
+             UCT_IFACE_FLAG_AM_ZCOPY)) {
             uint32_t flags =
                     (m_receiver->iface_attr().cap.flags &
                      UCT_IFACE_FLAG_CB_SYNC) ? 0 : UCT_CB_FLAG_ASYNC;
@@ -469,20 +471,23 @@ protected:
 
     void validate_op(const uct_ep_op_info_t *info, purge_ctx *ctx)
     {
+        if ((info->operation != UCT_EP_OP_FLUSH) &&
+            (info->field_mask & UCT_EP_OP_INFO_FIELD_COMP)) {
+            EXPECT_EQ(&ctx->op_comp, info->comp);
+        }
+
         switch (info->operation) {
         case UCT_EP_OP_FLUSH:
             validate_flush(info, ctx);
             return;
         default:
-            if (info->field_mask & UCT_EP_OP_INFO_FIELD_COMP) {
-                EXPECT_EQ(&ctx->op_comp, info->comp);
-            }
-
             UCS_TEST_ABORT("unsupported operation " << info->operation
                                                      << " at index "
                                                      << ctx->num_ops_purged);
         }
 
+        /* This fixture intentionally has no supported data operation. */
+        /* coverity[unreachable] */
         ++ctx->num_ops_purged;
     }
 
@@ -557,9 +562,9 @@ protected:
         purge_params.field_mask = UCT_EP_OUTSTANDING_FIELD_RX_TOKEN |
                                   UCT_EP_OUTSTANDING_FIELD_CB |
                                   UCT_EP_OUTSTANDING_FIELD_ARG;
-        purge_params.rx_token = rx_token.data();
-        purge_params.cb       = purge_cb;
-        purge_params.arg      = ctx;
+        purge_params.rx_token   = rx_token.data();
+        purge_params.cb         = purge_cb;
+        purge_params.arg        = ctx;
         ASSERT_UCS_OK(uct_ep_outstanding_purge(m_sender->ep(0),
                                                &purge_params));
     }

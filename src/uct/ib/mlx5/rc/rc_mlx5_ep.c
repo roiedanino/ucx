@@ -914,6 +914,13 @@ static ucs_status_t uct_ib_mlx5_psn_delivery_status(uint32_t wqe_first_psn,
 
     ucs_assert(num_packets > 0);
 
+    /*
+     * PSNs wrap in a 24-bit sequence space. Since the outstanding window is
+     * smaller than half of that space, the masked forward distance determines
+     * their order: 0 < diff < psn_half means receiver_next_psn is ahead of
+     * wqe_first_psn, while diff > psn_half means it is behind and the
+     * subtraction wrapped. Exactly psn_half is ambiguous.
+     */
     diff = (receiver_next_psn - wqe_first_psn) & UCT_IB_MLX5_PSN_MASK;
     if (diff == psn_half) {
         return UCS_ERR_INVALID_PARAM;

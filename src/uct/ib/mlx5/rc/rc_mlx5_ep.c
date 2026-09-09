@@ -762,6 +762,7 @@ ucs_status_t uct_rc_mlx5_base_ep_flush(uct_ep_h tl_ep, unsigned flags,
 {
     UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
     int already_canceled = ep->super.flags & UCT_RC_EP_FLAG_FLUSH_CANCEL;
+    uct_rc_iface_send_op_t *op;
     ucs_status_t status;
 
     UCT_CHECK_PARAM(!ucs_test_all_flags(flags, UCT_FLUSH_FLAG_CANCEL |
@@ -804,8 +805,17 @@ ucs_status_t uct_rc_mlx5_base_ep_flush(uct_ep_h tl_ep, unsigned flags,
                                       0);
     }
 
-    return uct_rc_txqp_add_flush_comp(&iface->super, &ep->super.super,
-                                      &ep->super.txqp, comp, ep->tx.wq.sig_pi);
+    status = uct_rc_txqp_add_flush_comp(&iface->super, &ep->super.super,
+                                        &ep->super.txqp, comp,
+                                        ep->tx.wq.sig_pi);
+    if ((status == UCS_INPROGRESS) && (comp != NULL)) {
+        op = ucs_queue_tail_elem_non_empty(&ep->super.txqp.outstanding,
+                                          uct_rc_iface_send_op_t, queue);
+        op->flags      |= UCT_RC_IFACE_SEND_OP_FLAG_FLUSH;
+        op->flush_flags = flags;
+    }
+
+    return status;
 }
 
 ucs_status_t uct_rc_mlx5_base_ep_invalidate(uct_ep_h tl_ep,
@@ -982,6 +992,37 @@ static uint32_t uct_rc_mlx5_ep_outstanding_num_packets(
     return num_packets;
 }
 
+static void uct_rc_mlx5_ep_purge_flush(
+        uct_rc_txqp_t *txqp, uint16_t sn,
+        const uct_ep_outstanding_purge_params_t *params, void *callback_arg,
+        ucs_queue_iter_t *iter_p)
+{
+    uct_ep_op_info_t info;
+    uct_rc_iface_send_op_t *op;
+
+    while (*iter_p != txqp->outstanding.ptail) {
+        op = ucs_container_of(**iter_p, uct_rc_iface_send_op_t, queue);
+        if (UCS_CIRCULAR_COMPARE16(op->sn, >, sn)) {
+            break;
+        }
+
+        *iter_p = &op->queue.next;
+        if (!(op->flags & UCT_RC_IFACE_SEND_OP_FLAG_FLUSH)) {
+            continue;
+        }
+
+        memset(&info, 0, sizeof(info));
+        info.field_mask       = UCT_EP_OP_INFO_FIELD_OPERATION |
+                                 UCT_EP_OP_INFO_FIELD_COMP |
+                                 UCT_EP_OP_INFO_FIELD_FLUSH;
+        info.operation        = UCT_EP_OP_FLUSH;
+        info.comp             = op->user_comp;
+        info.flush.field_mask = UCT_EP_OP_INFO_FLUSH_FIELD_FLAGS;
+        info.flush.flags      = op->flush_flags;
+        params->cb(&info, callback_arg);
+    }
+}
+
 static ucs_status_t uct_rc_mlx5_ep_outstanding_purge_check_params(
         const uct_ep_outstanding_purge_params_t *params)
 {
@@ -1011,6 +1052,7 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
 {
     UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
     uct_ib_mlx5_txwq_t *txwq = &ep->tx.wq;
+    ucs_queue_iter_t op_iter = &ep->super.txqp.outstanding.head;
     const uct_rc_mlx5_rx_token_t *rx_token;
     const struct mlx5_wqe_ctrl_seg *ctrl;
     uint8_t callback_data[UCT_IB_MLX5_MAX_SEND_WQE_SIZE];
@@ -1060,6 +1102,9 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
     wqe_first_psn = first_failed_psn;
     for (ci = start_ci; ci != end_ci;
          ci = uct_ib_mlx5_txwq_next_ci(ci, wqe_size)) {
+        /* A flush follows its signaled WQE, which need not be a NOP. */
+        uct_rc_mlx5_ep_purge_flush(&ep->super.txqp, ci - 1, params,
+                                   callback_arg, &op_iter);
         ctrl        = uct_ib_mlx5_txwq_get_wqe(txwq, ci);
         wqe_size    = uct_ib_mlx5_wqe_size(ctrl);
         num_packets = uct_rc_mlx5_op_num_packets(txwq, ctrl, wqe_size);
@@ -1091,6 +1136,8 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
     }
 
 out_purge:
+    uct_rc_mlx5_ep_purge_flush(&ep->super.txqp, txwq->prev_sw_pi, params,
+                               callback_arg, &op_iter);
     uct_rc_txqp_purge_outstanding(&iface->super, &ep->super.txqp,
                                   UCS_ERR_CANCELED, txwq->prev_sw_pi, 0);
     uct_rc_mlx5_ep_update_tx_qp_res(ep, txwq->prev_sw_pi);

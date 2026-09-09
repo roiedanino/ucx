@@ -379,6 +379,7 @@ protected:
         uct_completion_t           flush_comp;
         uint32_t                   num_ops_purged;
         uint32_t                   num_flush_purged;
+        unsigned                   num_flush_completed;
     };
 
     using send_func_t =
@@ -489,7 +490,9 @@ protected:
                     UCT_EP_OP_INFO_FLUSH_FIELD_FLAGS);
         EXPECT_EQ(0u, info->flush.flags);
         EXPECT_EQ(&ctx->flush_comp, info->comp);
-        ASSERT_EQ(0u, ctx->num_flush_purged);
+        ASSERT_LT(ctx->num_flush_purged, 2u);
+        /* Only the second operation can precede the flushes in the purge. */
+        EXPECT_LE(ctx->num_ops_purged, 1u);
         ++ctx->num_flush_purged;
     }
 
@@ -518,6 +521,13 @@ protected:
 
     static void completion_cb(uct_completion_t*)
     {
+    }
+
+    static void flush_completion_cb(uct_completion_t *comp)
+    {
+        purge_ctx *ctx = ucs_container_of(comp, purge_ctx, flush_comp);
+
+        ++ctx->num_flush_completed;
     }
 
     static ucs_status_t am_handler(void*, void*, size_t, unsigned)
@@ -566,9 +576,9 @@ protected:
         uct_ep_invalidate_params_t invalidate_params = {};
         purge_ctx                   ctx               = {
                 this, {completion_cb, 0, UCS_OK},
-                {completion_cb, 0, UCS_OK}, 0, 0};
+                {flush_completion_cb, 0, UCS_OK}, 0, 0, 0};
         uint32_t num_posted;
-        bool flush_outstanding;
+        unsigned num_flush_outstanding, num_flush_completed;
         ucs_status_t status;
 
         status = post_op(m_sender->ep(0), &ctx.op_comp, send_func);
@@ -586,25 +596,29 @@ protected:
         ASSERT_UCS_OK(uct_ep_invalidate(m_sender->ep(0), &invalidate_params));
         /* Post after invalidation so flush exercises local cancellation. */
         post_flush(m_sender->ep(0), &ctx.flush_comp);
+        post_flush(m_sender->ep(0), &ctx.flush_comp);
         num_posted += post_until_error(m_sender->ep(0), &ctx.op_comp,
                                        send_func);
 
         wait_for_flag(&m_err_count);
         ASSERT_EQ(1u, m_err_count);
 
-        flush_outstanding = ctx.flush_comp.count != 0;
+        num_flush_outstanding = ctx.flush_comp.count;
+        num_flush_completed   = ctx.num_flush_completed;
         purge_outstanding(&ctx);
 
         EXPECT_GT(ctx.num_ops_purged, 0u);
         EXPECT_LT(ctx.num_ops_purged, num_posted);
-        /* A pending flush may be completed locally without a purge callback. */
-        EXPECT_LE(ctx.num_flush_purged, unsigned(flush_outstanding));
+        EXPECT_EQ(num_flush_outstanding, ctx.num_flush_purged);
 
         wait_for_value(&ctx.op_comp.count, 0, true);
         wait_for_value(&ctx.flush_comp.count, 0, true);
-        if (flush_outstanding) {
+        if (num_flush_outstanding != 0) {
             EXPECT_EQ(UCS_ERR_CANCELED, ctx.flush_comp.status);
+            ++num_flush_completed;
         }
+
+        EXPECT_EQ(num_flush_completed, ctx.num_flush_completed);
 
         flush();
         EXPECT_EQ(0, ctx.op_comp.count);

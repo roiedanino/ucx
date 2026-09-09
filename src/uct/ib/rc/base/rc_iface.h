@@ -107,6 +107,7 @@ enum {
 
 /* flags for uct_rc_iface_send_op_t */
 enum {
+    UCT_RC_IFACE_SEND_OP_FLAG_FLUSH = UCS_BIT(10), /* flush_flags field is valid */
     UCT_RC_IFACE_SEND_OP_STATUS     = UCS_BIT(11), /* status field is valid */
 #ifdef NVALGRIND
     UCT_RC_IFACE_SEND_OP_FLAG_IOV   = 0,
@@ -340,7 +341,10 @@ struct uct_rc_iface_send_op {
     uct_rc_send_handler_t         handler;
     uint16_t                      sn;
     uint16_t                      flags;
-    unsigned                      length;
+    union {
+        unsigned                  length;
+        unsigned                  flush_flags;
+    };
     union {
         void                      *buffer;     /* atomics / desc /
                                                   FC_PURE_GRANT request */

@@ -981,10 +981,10 @@ static uint32_t uct_rc_mlx5_ep_outstanding_num_packets(
          ci = uct_ib_mlx5_txwq_next_ci(ci, wqe_size)) {
         ctrl     = uct_ib_mlx5_txwq_get_wqe(txwq, ci);
         wqe_size = uct_ib_mlx5_wqe_size(ctrl);
-        if ((wqe_size == 0) ||
-            (wqe_size > UCT_IB_MLX5_MAX_SEND_WQE_SIZE)) {
-            ucs_fatal("rc mlx5: invalid outstanding WQE size %zu", wqe_size);
-        }
+        ucs_assertv_always(
+                (wqe_size > 0) &&
+                (wqe_size <= UCT_IB_MLX5_MAX_SEND_WQE_SIZE),
+                "wqe_size=%zu", wqe_size);
 
         num_packets += uct_rc_mlx5_op_num_packets(txwq, ctrl, wqe_size);
     }
@@ -1073,7 +1073,8 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
     callback_arg = (params->field_mask & UCT_EP_OUTSTANDING_FIELD_ARG) ?
                    params->arg : NULL;
 
-    ucs_assert(ep->err_handler_inprogress);
+    ucs_assertv_always(ep->err_handler_inprogress,
+                       "ep %p is not in deferred error handling", ep);
 
     end_ci   = txwq->sw_pi;
     ctrl     = uct_ib_mlx5_txwq_get_wqe(txwq, txwq->ft_ci);

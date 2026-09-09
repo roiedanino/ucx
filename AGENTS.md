@@ -44,7 +44,7 @@ them.
 
 - Create PRs as ready for review by default; do not use GitHub's draft state.
 - For PRs that are not ready for review, keep them non-draft, add the
-  `WIP-DNM` label, and prefix the PR title with `[DNM-WIP] `.
+  `WIP-DNM` label, and prefix the PR title with `[WIP-DNM] `.
 - Remove both the `WIP-DNM` label and title prefix when the PR is ready for
   review.
 

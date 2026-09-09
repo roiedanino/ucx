@@ -919,8 +919,10 @@ ucs_status_t uct_ib_mlx5_txwq_init(uct_priv_worker_t *worker,
 /* Get pointer to a WQE by producer index */
 void *uct_ib_mlx5_txwq_get_wqe(const uct_ib_mlx5_txwq_t *txwq, uint16_t pi);
 
+/* Get the WQE size in bytes from its control segment */
 size_t uct_ib_mlx5_wqe_size(const struct mlx5_wqe_ctrl_seg *ctrl);
 
+/* Get the index of the WQE that follows a WQE of the given size */
 uint16_t uct_ib_mlx5_txwq_next_ci(uint16_t ci, size_t wqe_size);
 
 /* Count how many WQEs are currently posted */

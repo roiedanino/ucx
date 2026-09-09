@@ -762,7 +762,6 @@ ucs_status_t uct_rc_mlx5_base_ep_flush(uct_ep_h tl_ep, unsigned flags,
 {
     UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
     int already_canceled = ep->super.flags & UCT_RC_EP_FLAG_FLUSH_CANCEL;
-    uct_rc_iface_send_op_t *op;
     ucs_status_t status;
 
     UCT_CHECK_PARAM(!ucs_test_all_flags(flags, UCT_FLUSH_FLAG_CANCEL |
@@ -805,17 +804,8 @@ ucs_status_t uct_rc_mlx5_base_ep_flush(uct_ep_h tl_ep, unsigned flags,
                                       0);
     }
 
-    status = uct_rc_txqp_add_flush_comp(&iface->super, &ep->super.super,
-                                        &ep->super.txqp, comp,
-                                        ep->tx.wq.sig_pi);
-    if ((status == UCS_INPROGRESS) && (comp != NULL)) {
-        op = ucs_queue_tail_elem_non_empty(&ep->super.txqp.outstanding,
-                                          uct_rc_iface_send_op_t, queue);
-        op->flags      |= UCT_RC_IFACE_SEND_OP_FLAG_FLUSH;
-        op->flush_flags = flags;
-    }
-
-    return status;
+    return uct_rc_txqp_add_flush_comp(&iface->super, &ep->super.super,
+                                      &ep->super.txqp, comp, ep->tx.wq.sig_pi);
 }
 
 ucs_status_t uct_rc_mlx5_base_ep_invalidate(uct_ep_h tl_ep,
@@ -850,7 +840,7 @@ static ucs_status_t
 uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
                                   const struct mlx5_wqe_inl_data_seg *inl,
                                   size_t wqe_size, void *callback_data,
-                                  int *skip_p, uct_ep_op_info_t *info)
+                                  uct_ep_op_info_t *info)
 {
     size_t inline_length   = ntohl(inl->byte_count) & ~MLX5_INLINE_SEG;
     size_t inline_wqe_size = sizeof(struct mlx5_wqe_ctrl_seg) +
@@ -858,8 +848,7 @@ uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
                                               UCT_IB_MLX5_WQE_SEG_SIZE);
     uct_rc_mlx5_am_short_hdr_t *am;
 
-    if ((inline_length < sizeof(uct_rc_mlx5_hdr_t)) ||
-        (wqe_size != inline_wqe_size)) {
+    if (wqe_size != inline_wqe_size) {
         return UCS_ERR_UNSUPPORTED;
     }
 
@@ -868,8 +857,7 @@ uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
     am = callback_data;
     if ((am->rc_hdr.rc_hdr.am_id & UCT_RC_EP_FC_MASK) ==
         UCT_RC_EP_FC_PURE_GRANT) {
-        *skip_p = 1;
-        return UCS_OK;
+        return UCS_ERR_NO_ELEM;
     }
 
     if (inline_length < sizeof(*am)) {
@@ -892,12 +880,11 @@ uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
 static ucs_status_t uct_rc_mlx5_op_info_fill_am(
         const uct_ib_mlx5_txwq_t *txwq,
         const struct mlx5_wqe_ctrl_seg *ctrl, size_t wqe_size,
-        void *callback_data, int *skip_p, uct_ep_op_info_t *info)
+        void *callback_data, uct_ep_op_info_t *info)
 {
     const struct mlx5_wqe_inl_data_seg *inl;
 
     memset(info, 0, sizeof(*info));
-    *skip_p = 0;
     ucs_assert(uct_ib_mlx5_wqe_opcode(ctrl) == MLX5_OPCODE_SEND);
 
     ucs_assertv_always(
@@ -909,15 +896,15 @@ static ucs_status_t uct_rc_mlx5_op_info_fill_am(
                                     (void*)(ctrl + 1));
     if (inl->byte_count & htonl(MLX5_INLINE_SEG)) {
         return uct_rc_mlx5_op_info_fill_am_short(
-                txwq, inl, wqe_size, callback_data, skip_p, info);
+                txwq, inl, wqe_size, callback_data, info);
     }
 
     return UCS_ERR_UNSUPPORTED;
 }
 
-static ucs_status_t uct_ib_mlx5_psn_delivery_status(uint32_t wqe_first_psn,
-                                                    uint32_t receiver_next_psn,
-                                                    uint32_t num_packets)
+static int uct_ib_mlx5_wqe_is_delivered(uint32_t wqe_first_psn,
+                                        uint32_t receiver_next_psn,
+                                        uint32_t num_packets)
 {
     const uint32_t psn_half = UCS_BIT(UCT_IB_MLX5_PSN_BITS - 1);
     uint32_t diff;
@@ -929,21 +916,14 @@ static ucs_status_t uct_ib_mlx5_psn_delivery_status(uint32_t wqe_first_psn,
      * smaller than half of that space, the masked forward distance determines
      * their order: 0 < diff < psn_half means receiver_next_psn is ahead of
      * wqe_first_psn, while diff > psn_half means it is behind and the
-     * subtraction wrapped. Exactly psn_half is ambiguous.
+     * subtraction wrapped. The validated outstanding window excludes the
+     * ambiguous distance of exactly psn_half.
      */
     diff = (receiver_next_psn - wqe_first_psn) & UCT_IB_MLX5_PSN_MASK;
-    if (diff == psn_half) {
-        return UCS_ERR_INVALID_PARAM;
-    }
-
-    if ((diff == 0) || (diff > psn_half) || (diff < num_packets)) {
-        return UCS_INPROGRESS;
-    }
-
-    return UCS_OK;
+    return (diff < psn_half) && (diff >= num_packets);
 }
 
-static uint32_t uct_rc_mlx5_op_num_packets(
+static uint32_t uct_ib_mlx5_wqe_num_packets(
         const uct_ib_mlx5_txwq_t *txwq,
         const struct mlx5_wqe_ctrl_seg *ctrl, size_t wqe_size)
 {
@@ -969,7 +949,7 @@ static uint32_t uct_rc_mlx5_op_num_packets(
     }
 }
 
-static uint32_t uct_rc_mlx5_ep_outstanding_num_packets(
+static uint32_t uct_rc_mlx5_txwq_outstanding_num_packets(
         uct_ib_mlx5_txwq_t *txwq, uint16_t start_ci, uint16_t end_ci)
 {
     const struct mlx5_wqe_ctrl_seg *ctrl;
@@ -986,41 +966,10 @@ static uint32_t uct_rc_mlx5_ep_outstanding_num_packets(
                 (wqe_size <= UCT_IB_MLX5_MAX_SEND_WQE_SIZE),
                 "wqe_size=%zu", wqe_size);
 
-        num_packets += uct_rc_mlx5_op_num_packets(txwq, ctrl, wqe_size);
+        num_packets += uct_ib_mlx5_wqe_num_packets(txwq, ctrl, wqe_size);
     }
 
     return num_packets;
-}
-
-static void uct_rc_mlx5_ep_purge_flush(
-        uct_rc_txqp_t *txqp, uint16_t sn,
-        const uct_ep_outstanding_purge_params_t *params, void *callback_arg,
-        ucs_queue_iter_t *iter_p)
-{
-    uct_ep_op_info_t info;
-    uct_rc_iface_send_op_t *op;
-
-    while (*iter_p != txqp->outstanding.ptail) {
-        op = ucs_container_of(**iter_p, uct_rc_iface_send_op_t, queue);
-        if (UCS_CIRCULAR_COMPARE16(op->sn, >, sn)) {
-            break;
-        }
-
-        *iter_p = &op->queue.next;
-        if (!(op->flags & UCT_RC_IFACE_SEND_OP_FLAG_FLUSH)) {
-            continue;
-        }
-
-        memset(&info, 0, sizeof(info));
-        info.field_mask       = UCT_EP_OP_INFO_FIELD_OPERATION |
-                                 UCT_EP_OP_INFO_FIELD_COMP |
-                                 UCT_EP_OP_INFO_FIELD_FLUSH;
-        info.operation        = UCT_EP_OP_FLUSH;
-        info.comp             = op->user_comp;
-        info.flush.field_mask = UCT_EP_OP_INFO_FLUSH_FIELD_FLAGS;
-        info.flush.flags      = op->flush_flags;
-        params->cb(&info, callback_arg);
-    }
 }
 
 static ucs_status_t uct_rc_mlx5_ep_outstanding_purge_check_params(
@@ -1052,7 +1001,6 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
 {
     UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
     uct_ib_mlx5_txwq_t *txwq = &ep->tx.wq;
-    ucs_queue_iter_t op_iter = &ep->super.txqp.outstanding.head;
     const uct_rc_mlx5_rx_token_t *rx_token;
     const struct mlx5_wqe_ctrl_seg *ctrl;
     uint8_t callback_data[UCT_IB_MLX5_MAX_SEND_WQE_SIZE];
@@ -1061,9 +1009,9 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
     uint32_t first_failed_psn, wqe_first_psn, receiver_next_psn, psn_diff;
     uint32_t num_outstanding_packets, num_packets;
     size_t wqe_size;
-    int skip;
     void *callback_arg;
-    ucs_status_t delivery_status, status;
+    int is_delivered;
+    ucs_status_t status;
 
     status = uct_rc_mlx5_ep_outstanding_purge_check_params(params);
     if (status != UCS_OK) {
@@ -1085,15 +1033,13 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
         goto out_purge;
     }
 
-    num_outstanding_packets = uct_rc_mlx5_ep_outstanding_num_packets(
+    num_outstanding_packets = uct_rc_mlx5_txwq_outstanding_num_packets(
             txwq, start_ci, end_ci);
 
     rx_token          = params->rx_token;
     receiver_next_psn = ntohl(*rx_token) & UCT_IB_MLX5_PSN_MASK;
     first_failed_psn  = (uct_ib_mlx5_txwq_get_next_wqe_psn(txwq) -
                          num_outstanding_packets) & UCT_IB_MLX5_PSN_MASK;
-    ucs_assert(num_outstanding_packets <
-               UCS_BIT(UCT_IB_MLX5_PSN_BITS - 1));
     psn_diff = (receiver_next_psn - first_failed_psn) &
                UCT_IB_MLX5_PSN_MASK;
     if (psn_diff > num_outstanding_packets) {
@@ -1103,42 +1049,35 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
     wqe_first_psn = first_failed_psn;
     for (ci = start_ci; ci != end_ci;
          ci = uct_ib_mlx5_txwq_next_ci(ci, wqe_size)) {
-        /* A flush follows its signaled WQE, which need not be a NOP. */
-        uct_rc_mlx5_ep_purge_flush(&ep->super.txqp, ci - 1, params,
-                                   callback_arg, &op_iter);
         ctrl        = uct_ib_mlx5_txwq_get_wqe(txwq, ci);
         wqe_size    = uct_ib_mlx5_wqe_size(ctrl);
-        num_packets = uct_rc_mlx5_op_num_packets(txwq, ctrl, wqe_size);
+        num_packets = uct_ib_mlx5_wqe_num_packets(txwq, ctrl, wqe_size);
         if (num_packets == 0) {
             continue;
         }
 
-        delivery_status = uct_ib_mlx5_psn_delivery_status(
+        is_delivered = uct_ib_mlx5_wqe_is_delivered(
                 wqe_first_psn, receiver_next_psn, num_packets);
-        ucs_assertv_always((delivery_status == UCS_OK) ||
-                           (delivery_status == UCS_INPROGRESS),
-                           "delivery_status=%s",
-                           ucs_status_string(delivery_status));
         wqe_first_psn = (wqe_first_psn + num_packets) &
                         UCT_IB_MLX5_PSN_MASK;
 
-        if (delivery_status == UCS_INPROGRESS) {
+        if (!is_delivered) {
             status = uct_rc_mlx5_op_info_fill_am(
-                    txwq, ctrl, wqe_size, callback_data, &skip, &info);
+                    txwq, ctrl, wqe_size, callback_data, &info);
+            if (status == UCS_ERR_NO_ELEM) {
+                continue;
+            }
+
             if (status != UCS_OK) {
                 ucs_fatal("rc mlx5: failed to parse outstanding WQE at ci %u",
                           ci);
             }
 
-            if (!skip) {
-                params->cb(&info, callback_arg);
-            }
+            params->cb(&info, callback_arg);
         }
     }
 
 out_purge:
-    uct_rc_mlx5_ep_purge_flush(&ep->super.txqp, txwq->prev_sw_pi, params,
-                               callback_arg, &op_iter);
     uct_rc_txqp_purge_outstanding(&iface->super, &ep->super.txqp,
                                   UCS_ERR_CANCELED, txwq->prev_sw_pi, 0);
     uct_rc_mlx5_ep_update_tx_qp_res(ep, txwq->prev_sw_pi);

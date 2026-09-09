@@ -40,6 +40,14 @@ them.
 - Commit messages usually follow `COMPONENT/SUBCOMPONENT: Imperative message`,
   for example `UCP/CORE: Fix endpoint flush completion`.
 
+## Pull Request Creation
+
+- Create PRs as ready for review by default; do not use GitHub's draft state.
+- For PRs that are not ready for review, keep them non-draft, add the
+  `[DNM-WIP]` label, and prefix the PR title with `[DNM-WIP] `.
+- Remove both the `[DNM-WIP]` label and title prefix when the PR is ready for
+  review.
+
 ## Project Map
 
 UCX is a C communication framework with C++ unit tests. Use the nearest

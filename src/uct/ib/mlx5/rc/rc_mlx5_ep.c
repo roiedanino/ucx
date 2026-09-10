@@ -18,6 +18,7 @@
 #include <ucs/vfs/base/vfs_obj.h>
 #include <ucs/arch/cpu.h>
 #include <ucs/sys/compiler.h>
+#include <ucs/sys/string.h>
 #include <ucs/type/serialize.h>
 #include <arpa/inet.h> /* For htonl */
 
@@ -839,18 +840,10 @@ uct_ib_mlx5_txwq_copy_segs(const uct_ib_mlx5_txwq_t *txwq, const void *src,
 static ucs_status_t
 uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
                                   const struct mlx5_wqe_inl_data_seg *inl,
-                                  size_t wqe_size, void *callback_data,
-                                  uct_ep_op_info_t *info)
+                                  void *callback_data, uct_ep_op_info_t *info)
 {
-    size_t inline_length   = ntohl(inl->byte_count) & ~MLX5_INLINE_SEG;
-    size_t inline_wqe_size = sizeof(struct mlx5_wqe_ctrl_seg) +
-                             ucs_align_up_pow2(sizeof(*inl) + inline_length,
-                                              UCT_IB_MLX5_WQE_SEG_SIZE);
+    size_t inline_length = ntohl(inl->byte_count) & ~MLX5_INLINE_SEG;
     uct_rc_mlx5_am_short_hdr_t *am;
-
-    if (wqe_size != inline_wqe_size) {
-        return UCS_ERR_UNSUPPORTED;
-    }
 
     uct_ib_mlx5_txwq_copy_segs(txwq, inl + 1, callback_data, inline_length);
 
@@ -888,15 +881,14 @@ static ucs_status_t uct_rc_mlx5_op_info_fill_am(
     ucs_assert(uct_ib_mlx5_wqe_opcode(ctrl) == MLX5_OPCODE_SEND);
 
     ucs_assertv_always(
-            (wqe_size >= (sizeof(*ctrl) + sizeof(*inl))) &&
-            (wqe_size <= UCT_IB_MLX5_MAX_SEND_WQE_SIZE),
+            wqe_size >= (sizeof(*ctrl) + sizeof(*inl)),
             "wqe_size=%zu", wqe_size);
 
     inl = uct_ib_mlx5_txwq_wrap_any((uct_ib_mlx5_txwq_t*)txwq,
                                     (void*)(ctrl + 1));
     if (inl->byte_count & htonl(MLX5_INLINE_SEG)) {
         return uct_rc_mlx5_op_info_fill_am_short(
-                txwq, inl, wqe_size, callback_data, info);
+                txwq, inl, callback_data, info);
     }
 
     return UCS_ERR_UNSUPPORTED;
@@ -929,6 +921,8 @@ static uint32_t uct_ib_mlx5_wqe_num_packets(
 {
     const struct mlx5_wqe_inl_data_seg *inl;
     uint8_t opcode = uct_ib_mlx5_wqe_opcode(ctrl);
+    uint8_t wqe[UCT_IB_MLX5_MAX_SEND_WQE_SIZE];
+    char wqe_dump[3 * sizeof(wqe)];
 
     switch (opcode) {
     case MLX5_OPCODE_NOP:
@@ -943,9 +937,13 @@ static uint32_t uct_ib_mlx5_wqe_num_packets(
             return 1;
         }
 
-        ucs_fatal("rc mlx5: unsupported outstanding SEND WQE");
+        /* Fall through */
     default:
-        ucs_fatal("rc mlx5: unsupported outstanding WQE opcode 0x%x", opcode);
+        uct_ib_mlx5_txwq_copy_segs(txwq, ctrl, wqe, wqe_size);
+        ucs_fatal("rc mlx5: unsupported outstanding WQE opcode 0x%x size %zu: %s",
+                  opcode, wqe_size,
+                  ucs_str_dump_hex(wqe, wqe_size, wqe_dump, sizeof(wqe_dump),
+                                   SIZE_MAX));
     }
 }
 
@@ -958,13 +956,9 @@ static uint32_t uct_rc_mlx5_txwq_outstanding_num_packets(
     size_t wqe_size;
 
     for (ci = start_ci; ci != end_ci;
-         ci = uct_ib_mlx5_txwq_next_ci(ci, wqe_size)) {
+         ci = uct_ib_mlx5_txwq_next_wqe_index(ci, wqe_size)) {
         ctrl     = uct_ib_mlx5_txwq_get_wqe(txwq, ci);
         wqe_size = uct_ib_mlx5_wqe_size(ctrl);
-        ucs_assertv_always(
-                (wqe_size > 0) &&
-                (wqe_size <= UCT_IB_MLX5_MAX_SEND_WQE_SIZE),
-                "wqe_size=%zu", wqe_size);
 
         num_packets += uct_ib_mlx5_wqe_num_packets(txwq, ctrl, wqe_size);
     }
@@ -1026,8 +1020,8 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
 
     end_ci   = txwq->sw_pi;
     ctrl     = uct_ib_mlx5_txwq_get_wqe(txwq, txwq->ft_ci);
-    start_ci = uct_ib_mlx5_txwq_next_ci(txwq->ft_ci,
-                                        uct_ib_mlx5_wqe_size(ctrl));
+    start_ci = uct_ib_mlx5_txwq_next_wqe_index(
+            txwq->ft_ci, uct_ib_mlx5_wqe_size(ctrl));
 
     if (start_ci == end_ci) {
         goto out_purge;
@@ -1048,7 +1042,7 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
 
     wqe_first_psn = first_failed_psn;
     for (ci = start_ci; ci != end_ci;
-         ci = uct_ib_mlx5_txwq_next_ci(ci, wqe_size)) {
+         ci = uct_ib_mlx5_txwq_next_wqe_index(ci, wqe_size)) {
         ctrl        = uct_ib_mlx5_txwq_get_wqe(txwq, ci);
         wqe_size    = uct_ib_mlx5_wqe_size(ctrl);
         num_packets = uct_ib_mlx5_wqe_num_packets(txwq, ctrl, wqe_size);

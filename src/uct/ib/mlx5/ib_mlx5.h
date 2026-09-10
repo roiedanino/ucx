@@ -923,7 +923,7 @@ void *uct_ib_mlx5_txwq_get_wqe(const uct_ib_mlx5_txwq_t *txwq, uint16_t pi);
 size_t uct_ib_mlx5_wqe_size(const struct mlx5_wqe_ctrl_seg *ctrl);
 
 /* Get the index of the WQE that follows a WQE of the given size */
-uint16_t uct_ib_mlx5_txwq_next_ci(uint16_t ci, size_t wqe_size);
+uint16_t uct_ib_mlx5_txwq_next_wqe_index(uint16_t index, size_t wqe_size);
 
 /* Count how many WQEs are currently posted */
 uint16_t uct_ib_mlx5_txwq_num_posted_wqes(const uct_ib_mlx5_txwq_t *txwq,

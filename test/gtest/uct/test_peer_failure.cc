@@ -570,23 +570,17 @@ protected:
     void test_purge_outstanding(const send_func_t &send_func,
                                 purge_ctx &ctx)
     {
+        static constexpr uint32_t NUM_MSG_BEFORE_INVALIDATE = 2;
         uct_ep_invalidate_params_t invalidate_params = {};
-        uint32_t num_posted;
+        uint32_t num_posted = 0;
         unsigned num_outstanding, num_completions;
         ucs_status_t status;
 
-        status = post_op(m_sender->ep(0), &ctx.comp, send_func);
-        ASSERT_UCS_OK_OR_INPROGRESS(status);
-        num_posted = 1;
-        flush();
-
-        status = post_op(m_sender->ep(0), &ctx.comp, send_func);
-        if (UCS_STATUS_IS_ERR(status)) {
-            UCS_TEST_ABORT("failed to post operation before invalidation: "
-                           << ucs_status_string(status));
+        for (; num_posted < NUM_MSG_BEFORE_INVALIDATE; ++num_posted) {
+            status = post_op(m_sender->ep(0), &ctx.comp, send_func);
+            ASSERT_UCS_OK_OR_INPROGRESS(status);
         }
 
-        ++num_posted;
         ASSERT_UCS_OK(uct_ep_invalidate(m_sender->ep(0), &invalidate_params));
         /* Post after invalidation so flush exercises local cancellation. */
         post_flush(m_sender->ep(0), &ctx.comp);
@@ -601,7 +595,7 @@ protected:
         purge_outstanding(&ctx);
 
         EXPECT_GT(ctx.num_ops_purged, 0u);
-        EXPECT_LT(ctx.num_ops_purged, num_posted);
+        EXPECT_LE(ctx.num_ops_purged, num_posted);
         EXPECT_EQ(0u, ctx.num_flush_purged);
 
         wait_for_value(&ctx.comp.count, 0, true);

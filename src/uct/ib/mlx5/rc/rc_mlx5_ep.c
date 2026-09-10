@@ -1093,6 +1093,7 @@ out_purge:
     uct_rc_txqp_purge_outstanding(&iface->super, &ep->super.txqp,
                                   UCS_ERR_CANCELED, txwq->prev_sw_pi, 0);
     uct_rc_mlx5_ep_update_tx_qp_res(ep, txwq->prev_sw_pi);
+    txwq->ft_ci = txwq->prev_sw_pi;
     return UCS_OK;
 }
 

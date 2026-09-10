@@ -819,13 +819,13 @@ ucs_status_t uct_rc_mlx5_base_ep_invalidate(uct_ep_h tl_ep,
 }
 
 static uint8_t
-uct_ib_mlx5_wqe_opcode(const struct mlx5_wqe_ctrl_seg *ctrl)
+uct_rc_mlx5_wqe_opcode(const struct mlx5_wqe_ctrl_seg *ctrl)
 {
     return ctrl->opmod_idx_opcode >> 24;
 }
 
 static void
-uct_ib_mlx5_txwq_copy_segs(const uct_ib_mlx5_txwq_t *txwq, const void *src,
+uct_rc_mlx5_txwq_copy_segs(const uct_ib_mlx5_txwq_t *txwq, const void *src,
                            void *dst, size_t length)
 {
     size_t copy_len = ucs_min(length, UCS_PTR_BYTE_DIFF(src, txwq->qend));
@@ -845,7 +845,7 @@ uct_rc_mlx5_op_info_fill_am_short(const uct_ib_mlx5_txwq_t *txwq,
     size_t inline_length = ntohl(inl->byte_count) & ~MLX5_INLINE_SEG;
     uct_rc_mlx5_am_short_hdr_t *am;
 
-    uct_ib_mlx5_txwq_copy_segs(txwq, inl + 1, callback_data, inline_length);
+    uct_rc_mlx5_txwq_copy_segs(txwq, inl + 1, callback_data, inline_length);
 
     am = callback_data;
     if ((am->rc_hdr.rc_hdr.am_id & UCT_RC_EP_FC_MASK) ==
@@ -878,7 +878,7 @@ static ucs_status_t uct_rc_mlx5_op_info_fill_am(
     const struct mlx5_wqe_inl_data_seg *inl;
 
     memset(info, 0, sizeof(*info));
-    ucs_assert(uct_ib_mlx5_wqe_opcode(ctrl) == MLX5_OPCODE_SEND);
+    ucs_assert(uct_rc_mlx5_wqe_opcode(ctrl) == MLX5_OPCODE_SEND);
 
     ucs_assertv_always(
             wqe_size >= (sizeof(*ctrl) + sizeof(*inl)),
@@ -915,14 +915,28 @@ static int uct_ib_mlx5_wqe_is_delivered(uint32_t wqe_first_psn,
     return (diff < psn_half) && (diff >= num_packets);
 }
 
+static UCS_F_NOINLINE UCS_F_NORETURN void
+uct_rc_mlx5_wqe_unsupported(const uct_ib_mlx5_txwq_t *txwq,
+                             const struct mlx5_wqe_ctrl_seg *ctrl,
+                             size_t wqe_size)
+{
+    uint8_t wqe[UCT_IB_MLX5_MAX_SEND_WQE_SIZE];
+    char wqe_dump[3 * sizeof(wqe)];
+
+    uct_rc_mlx5_txwq_copy_segs(txwq, ctrl, wqe, wqe_size);
+    ucs_fatal("rc mlx5: unsupported outstanding WQE opcode 0x%x size %zu: %s",
+              uct_rc_mlx5_wqe_opcode(ctrl), wqe_size,
+              ucs_str_dump_hex(wqe, wqe_size, wqe_dump, sizeof(wqe_dump),
+                               SIZE_MAX));
+}
+
 static uint32_t uct_ib_mlx5_wqe_num_packets(
         const uct_ib_mlx5_txwq_t *txwq,
         const struct mlx5_wqe_ctrl_seg *ctrl, size_t wqe_size)
 {
     const struct mlx5_wqe_inl_data_seg *inl;
-    uint8_t opcode = uct_ib_mlx5_wqe_opcode(ctrl);
-    uint8_t wqe[UCT_IB_MLX5_MAX_SEND_WQE_SIZE];
-    char wqe_dump[3 * sizeof(wqe)];
+    uint8_t opcode = uct_rc_mlx5_wqe_opcode(ctrl);
+    size_t inline_length, inline_wqe_size;
 
     switch (opcode) {
     case MLX5_OPCODE_NOP:
@@ -934,16 +948,20 @@ static uint32_t uct_ib_mlx5_wqe_num_packets(
         inl = uct_ib_mlx5_txwq_wrap_any((uct_ib_mlx5_txwq_t*)txwq,
                                         (void*)(ctrl + 1));
         if (inl->byte_count & htonl(MLX5_INLINE_SEG)) {
-            return 1;
+            inline_length   = ntohl(inl->byte_count) & ~MLX5_INLINE_SEG;
+            inline_wqe_size = sizeof(*ctrl) +
+                              ucs_align_up_pow2(sizeof(*inl) + inline_length,
+                                                UCT_IB_MLX5_WQE_SEG_SIZE);
+            /* AM short is fully inline. IOV-backed AM zcopy also starts
+             * inline, but has trailing data segments we do not support. */
+            if (wqe_size == inline_wqe_size) {
+                return 1;
+            }
         }
 
         /* Fall through */
     default:
-        uct_ib_mlx5_txwq_copy_segs(txwq, ctrl, wqe, wqe_size);
-        ucs_fatal("rc mlx5: unsupported outstanding WQE opcode 0x%x size %zu: %s",
-                  opcode, wqe_size,
-                  ucs_str_dump_hex(wqe, wqe_size, wqe_dump, sizeof(wqe_dump),
-                                   SIZE_MAX));
+        uct_rc_mlx5_wqe_unsupported(txwq, ctrl, wqe_size);
     }
 }
 

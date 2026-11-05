@@ -2307,4 +2307,128 @@ UCS_TEST_P(test_rc_sgl_completion, prefix_completion_then_cancel)
 
 _UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_completion, rc_mlx5)
 
+class test_rc_sgl_regression : public test_rc_sgl_completion {
+protected:
+    void init() override
+    {
+        test_rc_sgl_completion::init();
+        /* Retain the idle adapter instead of releasing it in the callback. */
+        ASSERT_UCS_OK(uct_rc_mlx5_sgl_completion_init(
+                m_entity->ep(0), element_count, complete, this,
+                m_completion.get()));
+    }
+
+    static void complete(void *arg, ucs_status_t status, uint64_t start,
+                         uint64_t end)
+    {
+        auto self = static_cast<test_rc_sgl_regression*>(arg);
+        EXPECT_EQ(0, self->m_completion->super.count);
+        self->m_status = status;
+        self->m_start  = start;
+        self->m_end    = end;
+        ++self->m_callbacks;
+    }
+
+    struct ordinary_completion {
+        uct_completion_t super;
+        unsigned calls;
+    };
+
+    static void ordinary_complete(uct_completion_t *comp)
+    {
+        ++ucs_container_of(comp, ordinary_completion, super)->calls;
+    }
+
+    ordinary_completion m_ordinary = {};
+};
+
+UCS_TEST_P(test_rc_sgl_regression, anchor_and_32_writes)
+{
+    const size_t count = 33;
+    uct_iface_attr_v2_t attr = {};
+    std::vector<void*> buffers(count);
+    std::vector<size_t> lengths(count, element_size);
+    std::vector<uct_mem_h> memhs(count);
+    std::vector<uint64_t> remote_addrs(count);
+    std::vector<uct_rkey_t> rkeys(count);
+
+    attr.field_mask = UCT_IFACE_ATTR_FIELD_MAX_PUT_SGL_ZCOPY_COUNT;
+    ASSERT_UCS_OK(uct_iface_query_v2(m_entity->iface(), &attr));
+    ASSERT_GE(attr.max_put_sgl_zcopy_count, count);
+    m_source.reset(new mapped_buffer(count * element_size, 17, *m_entity));
+    m_target.reset(new mapped_buffer(count * element_size, 0, *m_entity));
+    for (size_t i = 0; i < count; ++i) {
+        buffers[i]      = UCS_PTR_BYTE_OFFSET(m_source->ptr(),
+                                               i * element_size);
+        memhs[i]        = m_source->memh();
+        remote_addrs[i] = m_target->addr() + i * element_size;
+        rkeys[i]        = m_target->rkey();
+    }
+
+    ASSERT_UCS_OK(uct_rc_mlx5_sgl_completion_init(
+            m_entity->ep(0), count, complete, this, m_completion.get()));
+    ASSERT_EQ(UCS_INPROGRESS, uct_ep_put_sgl_zcopy(
+            m_entity->ep(0), buffers.data(), lengths.data(), memhs.data(),
+            remote_addrs.data(), rkeys.data(), NULL, NULL, count,
+            &m_completion->super));
+    EXPECT_EQ(2, m_completion->super.count);
+    m_entity->flush();
+    ASSERT_EQ(1u, m_callbacks);
+    EXPECT_EQ(UCS_OK, m_status);
+    EXPECT_NE(m_start, m_end);
+    m_target->pattern_check(17);
+}
+
+UCS_TEST_P(test_rc_sgl_regression, ordinary_completions)
+{
+    auto post_ordinary = [this](uct_completion_t *comp) {
+        return uct_ep_put_sgl_zcopy(
+                m_entity->ep(0), m_buffers, m_lengths, m_memhs,
+                m_remote_addrs, m_rkeys, NULL, NULL, element_count, comp);
+    };
+
+    ASSERT_UCS_OK_OR_INPROGRESS(post_ordinary(NULL));
+    m_entity->flush();
+    m_ordinary.super.func   = ordinary_complete;
+    m_ordinary.super.count  = 1;
+    m_ordinary.super.status = UCS_OK;
+    ASSERT_EQ(UCS_INPROGRESS, post_ordinary(&m_ordinary.super));
+    m_entity->flush();
+    EXPECT_EQ(1u, m_ordinary.calls);
+    EXPECT_EQ(0, m_ordinary.super.count);
+    EXPECT_EQ(UCS_OK, m_ordinary.super.status);
+    EXPECT_EQ(0u, m_callbacks);
+    m_target->pattern_check(17);
+}
+
+UCS_TEST_P(test_rc_sgl_regression, adapter_reuse)
+{
+    for (unsigned i = 0; i < 3; ++i) {
+        ASSERT_EQ(UCS_INPROGRESS, post());
+        m_entity->flush();
+        EXPECT_EQ(i + 1, m_callbacks);
+        EXPECT_EQ(UCS_OK, m_status);
+        EXPECT_EQ(0, m_completion->super.count);
+        EXPECT_NE(m_start, m_end);
+    }
+
+    m_target->pattern_check(17);
+}
+
+UCS_TEST_P(test_rc_sgl_regression, invalid_counts_preserve_adapter)
+{
+    uct_rc_mlx5_sgl_completion_t saved;
+
+    memcpy(&saved, m_completion.get(), sizeof(saved));
+    for (size_t count : {size_t(0), size_t(1), size_t(UINT16_MAX) + 1}) {
+        EXPECT_EQ(UCS_ERR_INVALID_PARAM, uct_rc_mlx5_sgl_completion_init(
+                m_entity->ep(0), count, complete, this, m_completion.get()));
+        EXPECT_EQ(0, memcmp(&saved, m_completion.get(), sizeof(saved)));
+    }
+
+    EXPECT_EQ(0u, m_callbacks);
+}
+
+_UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_regression, rc_mlx5)
+
 #endif

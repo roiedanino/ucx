@@ -1159,6 +1159,12 @@ uct_rc_mlx5_ep_put_sgl_zcopy(uct_ep_h ep, void * const *buffers,
 {
     ucs_status_t status;
 
+    if (uct_rc_mlx5_sgl_completion_is_adapter(comp)) {
+        return uct_rc_mlx5_base_ep_put_sgl_zcopy(
+                ep, buffers, lengths, memhs, remote_addrs, rkeys, counts,
+                strides, count, comp);
+    }
+
     status = uct_ib_mlx5_ext_ep_put_sgl_zcopy(ep, buffers, lengths, memhs,
                                               remote_addrs, rkeys, counts,
                                               strides, count, comp);
@@ -1169,6 +1175,43 @@ uct_rc_mlx5_ep_put_sgl_zcopy(uct_ep_h ep, void * const *buffers,
     }
 
     return status;
+}
+
+ucs_status_t uct_rc_mlx5_sgl_completion_init(
+        uct_ep_h ep, size_t count,
+        uct_rc_mlx5_sgl_completion_func_t callback, void *arg,
+        uct_rc_mlx5_sgl_completion_t *completion)
+{
+    const uct_base_iface_t *base;
+    uct_rc_mlx5_iface_common_t *iface;
+
+    if ((ep == NULL) || (completion == NULL) || (count < 2) ||
+        (count > UINT16_MAX) || (callback == NULL)) {
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    base = ucs_derived_of(ep->iface, uct_base_iface_t);
+    if (base->internal_ops->ep_put_sgl_zcopy != uct_rc_mlx5_ep_put_sgl_zcopy) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    iface = ucs_derived_of(ep->iface, uct_rc_mlx5_iface_common_t);
+    if (!iface->tx.cqe_timestamp) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    if (count > uct_rc_mlx5_base_sgl_zcopy_max_count(iface)) {
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    completion->super.func   = uct_rc_mlx5_sgl_completion_marker;
+    completion->super.count  = 0;
+    completion->super.status = UCS_OK;
+    completion->ep           = ep;
+    completion->sgl_count    = count;
+    completion->callback     = callback;
+    completion->arg          = arg;
+    return UCS_OK;
 }
 
 static ucs_status_t
@@ -1239,6 +1282,10 @@ uct_rc_mlx5_ep_get_sgl_zcopy(uct_ep_h ep, void * const *buffers,
                              uct_completion_t *comp)
 {
     ucs_status_t status;
+
+    if (uct_rc_mlx5_sgl_completion_is_adapter(comp)) {
+        return UCS_ERR_UNSUPPORTED;
+    }
 
     status = uct_ib_mlx5_ext_ep_get_sgl_zcopy(ep, buffers, lengths, memhs,
                                               remote_addrs, rkeys, counts,

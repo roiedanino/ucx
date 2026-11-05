@@ -2182,4 +2182,129 @@ UCS_TEST_SKIP_COND_P(test_rc_srq, reorder_cyclic,
 
 UCT_INSTANTIATE_RC_DC_TEST_CASE(test_rc_srq);
 
+class test_rc_sgl_completion : public test_rc_cqe_timestamp {
+protected:
+    enum { element_count = 3, element_size = 64 * UCS_KBYTE };
+
+    void init() override
+    {
+        test_rc_cqe_timestamp::init();
+        for (unsigned i = 0; i < element_count; ++i) {
+            m_buffers[i]      = UCS_PTR_BYTE_OFFSET(m_source->ptr(),
+                                                    i * element_size);
+            m_lengths[i]      = element_size;
+            m_memhs[i]        = m_source->memh();
+            m_remote_addrs[i] = m_target->addr() + i * element_size;
+            m_rkeys[i]        = m_target->rkey();
+        }
+
+        m_completion.reset(new uct_rc_mlx5_sgl_completion_t());
+        ASSERT_UCS_OK(uct_rc_mlx5_sgl_completion_init(
+                m_entity->ep(0), element_count, final_cb, this,
+                m_completion.get()));
+    }
+
+    static void final_cb(void *arg, ucs_status_t status, uint64_t start,
+                         uint64_t end)
+    {
+        auto self = static_cast<test_rc_sgl_completion*>(arg);
+        EXPECT_EQ(0, self->m_completion->super.count);
+        self->m_status = status;
+        self->m_start  = start;
+        self->m_end    = end;
+        ++self->m_callbacks;
+        self->m_completion.reset();
+    }
+
+    ucs_status_t post()
+    {
+        return uct_ep_put_sgl_zcopy(
+                m_entity->ep(0), m_buffers, m_lengths, m_memhs,
+                m_remote_addrs, m_rkeys, NULL, NULL, element_count,
+                &m_completion->super);
+    }
+
+    uct_rc_mlx5_ep_t *ep()
+    {
+        return ucs_derived_of(m_entity->ep(0), uct_rc_mlx5_ep_t);
+    }
+
+    void *m_buffers[element_count];
+    size_t m_lengths[element_count];
+    uct_mem_h m_memhs[element_count];
+    uint64_t m_remote_addrs[element_count];
+    uct_rkey_t m_rkeys[element_count];
+    std::unique_ptr<uct_rc_mlx5_sgl_completion_t> m_completion;
+    unsigned     m_callbacks = 0;
+    ucs_status_t m_status    = UCS_INPROGRESS;
+    uint64_t     m_start     = 0;
+    uint64_t     m_end       = 0;
+};
+
+UCS_TEST_P(test_rc_sgl_completion, final_callback_releases_adapter)
+{
+    ASSERT_EQ(UCS_INPROGRESS, post());
+    EXPECT_EQ(2, m_completion->super.count);
+    EXPECT_EQ(UCS_ERR_BUSY, post());
+    m_entity->flush();
+    ASSERT_EQ(1u, m_callbacks);
+    EXPECT_EQ(UCS_OK, m_status);
+    EXPECT_NE(m_end, m_start);
+    EXPECT_FALSE(m_completion);
+    EXPECT_EQ(0, memcmp(m_source->ptr(), m_target->ptr(),
+                        element_count * element_size));
+}
+
+UCS_TEST_P(test_rc_sgl_completion, failed_post_preserves_adapter)
+{
+    auto iface = ucs_derived_of(m_entity->iface(), uct_rc_mlx5_iface_common_t);
+    const uint16_t pi = ep()->super.tx.wq.sw_pi;
+    const int cq_available = iface->super.tx.cq_available;
+    uct_rc_mlx5_sgl_completion_t saved;
+    ucs_status_t status;
+
+    memcpy(&saved, m_completion.get(), sizeof(saved));
+
+    m_lengths[1] = 0;
+    ASSERT_EQ(UCS_ERR_INVALID_PARAM, post());
+    m_lengths[1] = element_size;
+    iface->super.tx.cq_available = 0;
+    status = post();
+    iface->super.tx.cq_available = cq_available;
+    ASSERT_EQ(UCS_ERR_NO_RESOURCE, status);
+    EXPECT_EQ(pi, ep()->super.tx.wq.sw_pi);
+    EXPECT_EQ(0, memcmp(&saved, m_completion.get(), sizeof(saved)));
+    EXPECT_EQ(0u, m_callbacks);
+    ASSERT_EQ(UCS_INPROGRESS, post());
+    m_entity->flush();
+    EXPECT_EQ(1u, m_callbacks);
+}
+
+UCS_TEST_P(test_rc_sgl_completion, prefix_completion_then_cancel)
+{
+    const ucs_time_t deadline = ucs::get_deadline();
+
+    ASSERT_EQ(UCS_INPROGRESS, post());
+    while (m_completion && (m_completion->super.count == 2) &&
+           (ucs_get_time() < deadline)) {
+        m_entity->progress();
+    }
+
+    ASSERT_TRUE(m_completion);
+    ASSERT_EQ(1, m_completion->super.count);
+    EXPECT_EQ(0u, m_callbacks);
+    {
+        scoped_log_handler hide_warn(hide_warns_logger);
+        m_entity->destroy_ep(0);
+    }
+
+    ASSERT_EQ(1u, m_callbacks);
+    EXPECT_EQ(UCS_ERR_CANCELED, m_status);
+    EXPECT_EQ(0ul, m_start);
+    EXPECT_EQ(0ul, m_end);
+    EXPECT_FALSE(m_completion);
+}
+
+_UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_completion, rc_mlx5)
+
 #endif

@@ -2359,7 +2359,7 @@ UCS_TEST_P(test_rc_sgl_regression, anchor_and_32_writes)
     m_target.reset(new mapped_buffer(count * element_size, 0, *m_entity));
     for (size_t i = 0; i < count; ++i) {
         buffers[i]      = UCS_PTR_BYTE_OFFSET(m_source->ptr(),
-                                               i * element_size);
+                                              i * element_size);
         memhs[i]        = m_source->memh();
         remote_addrs[i] = m_target->addr() + i * element_size;
         rkeys[i]        = m_target->rkey();

@@ -8,6 +8,7 @@
 #define UCT_RC_MLX5_H
 
 #include "rc_mlx5_common.h"
+#include <uct/ib/mlx5/ib_mlx5_ext.h>
 
 #include <uct/ib/rc/base/rc_iface.h>
 #include <uct/ib/rc/base/rc_ep.h>
@@ -65,6 +66,23 @@ typedef struct uct_rc_mlx5_base_ep {
 
 typedef __be32 uct_rc_mlx5_tx_token_t;
 typedef __be32 uct_rc_mlx5_rx_token_t;
+
+void uct_rc_mlx5_sgl_completion_marker(uct_completion_t *completion);
+
+static inline int
+uct_rc_mlx5_sgl_completion_is_adapter(const uct_completion_t *completion)
+{
+    return (completion != NULL) &&
+           (completion->func == uct_rc_mlx5_sgl_completion_marker);
+}
+
+typedef struct uct_rc_mlx5_sgl_context uct_rc_mlx5_sgl_context_t;
+
+typedef struct uct_rc_mlx5_sgl_checkpoint {
+    uct_rc_iface_send_op_with_info_t op;
+    uct_rc_mlx5_sgl_context_t        *context;
+    unsigned                         index;
+} uct_rc_mlx5_sgl_checkpoint_t;
 
 
 /**

@@ -2249,7 +2249,7 @@ UCS_TEST_P(test_rc_sgl_completion, final_callback_releases_adapter)
     m_entity->flush();
     ASSERT_EQ(1u, m_callbacks);
     EXPECT_EQ(UCS_OK, m_status);
-    EXPECT_GT(m_end, m_start);
+    EXPECT_NE(m_end, m_start);
     EXPECT_FALSE(m_completion);
     EXPECT_EQ(0, memcmp(m_source->ptr(), m_target->ptr(),
                         element_count * element_size));

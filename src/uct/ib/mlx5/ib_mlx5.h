@@ -19,6 +19,10 @@
 #include <ucs/type/status.h>
 #include <ucs/sys/ptr_arith.h>
 
+struct uct_ib_mlx5_ext_ops;
+
+const struct uct_ib_mlx5_ext_ops *uct_ib_mlx5_ext_get_rc_provider(void);
+
 /**
  * When using a clang version that is higher than 3.0, the GNUC_MINOR is set
  * to 2, which affects the offset of several fields that are used by UCX from
@@ -665,6 +669,7 @@ typedef struct uct_ib_mlx5_qp_attr {
     uint32_t                    uidx;
     int                         full_handshake;
     int                         rdma_wr_disabled;
+    uint8_t                     cqe_timestamp;
     uint8_t                     log_num_dci_stream_channels;
     unsigned                    max_tx;
     unsigned                    len;

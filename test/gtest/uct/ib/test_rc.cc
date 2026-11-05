@@ -21,7 +21,179 @@ extern "C" {
 extern "C" {
 #include <uct/ib/mlx5/rc/rc_mlx5_common.h>
 #include <uct/ib/mlx5/rc/rc_mlx5.h>
+#include <uct/ib/mlx5/ib_mlx5_ext.h>
 }
+#endif
+
+class test_rc_completion_info : public ucs::test {
+protected:
+    struct operation {
+        uct_rc_iface_send_op_with_info_t op;
+        uint64_t fields, timestamp;
+        unsigned completed;
+    };
+
+    static void complete(uct_rc_iface_send_op_t *op,
+                         const uct_rc_send_op_completion_info_t *info)
+    {
+        operation *o = ucs_container_of(op, operation, op.super);
+        o->fields    = (info == NULL) ? 0 : info->field_mask;
+        o->timestamp = (info == NULL) ? 0 : info->timestamp;
+        ++o->completed;
+        EXPECT_EQ(nullptr, o->op.comp_info);
+    }
+};
+
+UCS_TEST_F(test_rc_completion_info, sequence_wraparound)
+{
+    uct_rc_txqp_t txqp = {};
+    operation ops[4] = {};
+    const uint16_t sns[] = {UINT16_MAX, 0, 0, 1};
+    uct_rc_send_op_completion_info_t info = {
+        UCT_RC_SEND_OP_COMPLETION_INFO_FIELD_TIMESTAMP, 0
+    };
+    ucs_queue_head_init(&txqp.outstanding);
+    for (unsigned i = 0; i < ucs_static_array_size(ops); ++i) {
+        uct_rc_ep_init_send_op_with_info(&ops[i].op, 0, complete, 0);
+        uct_rc_txqp_add_send_op_sn(&txqp, &ops[i].op.super, sns[i]);
+    }
+    uct_rc_txqp_completion_desc_with_info(&txqp, 0, &info);
+    EXPECT_EQ(0ul, ops[0].fields);
+    EXPECT_EQ(info.field_mask, ops[1].fields);
+    EXPECT_EQ(info.field_mask, ops[2].fields);
+    EXPECT_EQ(0ul, ops[1].timestamp); /* Zero is a valid timestamp. */
+    EXPECT_EQ(0u, ops[3].completed);
+    uct_rc_txqp_completion_desc(&txqp, 1);
+    EXPECT_EQ(0ul, ops[3].fields);
+    for (const operation &op : ops) {
+        EXPECT_EQ(1u, op.completed);
+    }
+}
+
+#ifdef HAVE_MLX5_DV
+class test_rc_cqe_timestamp : public uct_test {
+protected:
+    virtual bool timestamps() const { return true; }
+
+    void init() override
+    {
+        uct_test::init();
+        if (uct_ib_mlx5_ext_get_rc_provider() != NULL) {
+            UCS_TEST_SKIP_R("An RC extension provider is already registered");
+        }
+        m_ops = {};
+        m_provider = {};
+        if (timestamps()) {
+            m_ops.requirements = UCT_RC_MLX5_EXT_REQ_TX_CQE_TIMESTAMP;
+            ucs_strncpy_zero(m_provider.name, "test_cqe_timestamp",
+                             sizeof(m_provider.name));
+            m_provider.rc_ops = &m_ops;
+            ASSERT_UCS_OK(uct_ib_mlx5_ext_register(&m_provider));
+            m_registered = true;
+        }
+        m_entity = create_entity(0ul);
+        m_entities.push_back(m_entity);
+        auto *iface = ucs_derived_of(m_entity->iface(),
+                                     uct_rc_mlx5_iface_common_t);
+        if (timestamps() && !iface->tx.cqe_timestamp) {
+            UCS_TEST_SKIP_R("Raw CQ timestamps are unavailable");
+        }
+        m_entity->connect(0, *m_entity, 0);
+        m_source.reset(new mapped_buffer(3 * 65536, 17, *m_entity));
+        m_target.reset(new mapped_buffer(3 * 65536, 0, *m_entity));
+    }
+
+    void cleanup() override
+    {
+        m_target.reset();
+        m_source.reset();
+        uct_test::cleanup();
+        if (m_registered) {
+            uct_ib_mlx5_ext_unregister(m_provider.name);
+        }
+    }
+
+    void put_and_check(bool wakeup)
+    {
+        auto *ep = ucs_derived_of(m_entity->ep(0), uct_rc_mlx5_base_ep_t);
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+        uint64_t previous = 0;
+#endif
+        async_event_ctx event;
+        for (unsigned i = 0; i < 2; ++i) {
+            test_op op = {};
+            uct_completion_t comp = {};
+            if (wakeup) {
+                if (!check_event_caps(UCT_IFACE_FLAG_EVENT_SEND_COMP |
+                                      UCT_IFACE_FLAG_EVENT_FD)) {
+                    UCS_TEST_SKIP_R("Send completion events are unavailable");
+                }
+                ucs_status_t status;
+                do {
+                    progress();
+                    status = uct_iface_event_arm(m_entity->iface(),
+                                                  UCT_EVENT_SEND_COMP);
+                } while (status == UCS_ERR_BUSY);
+                ASSERT_UCS_OK(status);
+            }
+            comp.count = 2; /* Request a CQE without a user callback. */
+            uct_rc_ep_init_send_op_with_info(&op.op, 0, complete, 0);
+            uct_rc_txqp_add_send_op_sn(&ep->super.txqp, &op.op.super,
+                                        ep->tx.wq.sw_pi);
+            ASSERT_EQ(UCS_INPROGRESS, uct_ep_put_zcopy(m_entity->ep(0),
+                    m_source->iov(), 1, m_target->addr(), m_target->rkey(), &comp));
+            if (wakeup) {
+                EXPECT_TRUE(event.wait_for_event(*m_entity, 5.0));
+            }
+            wait_for_flag(&op.completed);
+            EXPECT_EQ(timestamps() ?
+                      UCT_RC_SEND_OP_COMPLETION_INFO_FIELD_TIMESTAMP : 0,
+                      op.fields);
+            EXPECT_EQ(nullptr, op.op.comp_info);
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+            if (timestamps() && (i != 0)) {
+                auto *md = ucs_derived_of(m_entity->md(), uct_ib_mlx5_md_t);
+                EXPECT_GT((op.timestamp - previous) &
+                          md->super.dev.dev_attr.completion_timestamp_mask, 0ul);
+            }
+            previous = op.timestamp;
+#endif
+            flush();
+            m_target->pattern_check(17);
+        }
+    }
+
+    struct test_op {
+        uct_rc_iface_send_op_with_info_t op;
+        uint64_t fields, timestamp;
+        unsigned completed;
+    };
+
+    static void complete(uct_rc_iface_send_op_t *op,
+                         const uct_rc_send_op_completion_info_t *info)
+    {
+        test_op *o   = ucs_container_of(op, test_op, op.super);
+        o->fields    = (info == NULL) ? 0 : info->field_mask;
+        o->timestamp = (info == NULL) ? 0 : info->timestamp;
+        o->completed = 1;
+    }
+
+    entity *m_entity;
+    std::unique_ptr<mapped_buffer> m_source, m_target;
+    uct_rc_mlx5_ext_ops_t m_ops;
+    uct_ib_mlx5_ext_ops_t m_provider;
+    bool m_registered = false;
+};
+
+UCS_TEST_P(test_rc_cqe_timestamp, put) { put_and_check(false); }
+UCS_TEST_P(test_rc_cqe_timestamp, wakeup) { put_and_check(true); }
+_UCT_INSTANTIATE_TEST_CASE(test_rc_cqe_timestamp, rc_mlx5)
+
+class test_rc_cqe_no_timestamp : public test_rc_cqe_timestamp {
+    bool timestamps() const override { return false; }
+};
+UCS_TEST_P(test_rc_cqe_no_timestamp, put) { put_and_check(false); }
+_UCT_INSTANTIATE_TEST_CASE(test_rc_cqe_no_timestamp, rc_mlx5)
 #endif
 
 

@@ -105,6 +105,9 @@ protected:
 
     void cleanup() override
     {
+        if (m_entity != nullptr) {
+            m_entity->destroy_eps();
+        }
         m_target.reset();
         m_source.reset();
         uct_test::cleanup();
@@ -121,8 +124,8 @@ protected:
 #endif
         async_event_ctx event;
         for (unsigned i = 0; i < 2; ++i) {
-            test_op op = {};
-            uct_completion_t comp = {};
+            test_op &op            = m_put_ops[i];
+            uct_completion_t &comp = m_put_comps[i];
             if (wakeup) {
                 if (!check_event_caps(UCT_IFACE_FLAG_EVENT_SEND_COMP |
                                       UCT_IFACE_FLAG_EVENT_FD)) {
@@ -178,7 +181,9 @@ protected:
         o->completed = 1;
     }
 
-    entity *m_entity;
+    test_op m_put_ops[2] = {};
+    uct_completion_t m_put_comps[2] = {};
+    entity *m_entity = nullptr;
     std::unique_ptr<mapped_buffer> m_source, m_target;
     uct_rc_mlx5_ext_ops_t m_ops;
     uct_ib_mlx5_ext_ops_t m_provider;

@@ -1030,8 +1030,8 @@ static int uct_rc_mlx5_iface_raw_timestamp_supported(uct_ib_mlx5_md_t *md)
     unsigned format;
 #endif
 
-    if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX_RC_QP)) {
-        return 1;
+    if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX)) {
+        return 0;
     }
 #if HAVE_DEVX
     if (uct_ib_mlx5_devx_query_cap(md->super.dev.ibv_context,

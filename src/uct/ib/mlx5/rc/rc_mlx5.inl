@@ -516,7 +516,7 @@ uct_rc_mlx5_base_ep_sgl_zcopy_post(uct_rc_mlx5_base_ep_t *ep,
                                    int resolve_atomic_rkey,
                                    uct_rc_send_handler_t handler,
                                    uint16_t op_flags, uct_completion_t *comp,
-                                   uct_rc_iface_send_op_t *timestamp_ops)
+                                   uct_rc_iface_send_op_t *timestamp_op)
 {
     uct_ib_mlx5_txwq_t *txwq       = &ep->tx.wq;
     size_t total                   = 0;
@@ -547,8 +547,7 @@ uct_rc_mlx5_base_ep_sgl_zcopy_post(uct_rc_mlx5_base_ep_t *ep,
 
     for (i = 0; i < count; i++) {
         fm_ce_se = ((i == 0) ? fence_flag : 0) |
-                   (((i == count - 1) || ((timestamp_ops != NULL) && (i == 0))) ?
-                    MLX5_WQE_CTRL_CQ_UPDATE : 0);
+                   ((i == count - 1) ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
         ctrl     = curr;
 
         addr = remote_addrs[i];
@@ -577,11 +576,6 @@ uct_rc_mlx5_base_ep_sgl_zcopy_post(uct_rc_mlx5_base_ep_t *ep,
         uct_ib_mlx5_set_ctrl_seg(ctrl, pi, opcode, 0, txwq->super.qp_num,
                                  fm_ce_se, 0, wqe_size);
 
-        if ((timestamp_ops != NULL) && ((i == 0) || (i == count - 1))) {
-            uct_rc_txqp_add_send_op_sn(
-                    &ep->super.txqp, &timestamp_ops[(i == 0) ? 0 : 1], pi);
-        }
-
         curr = UCS_PTR_BYTE_OFFSET(ctrl, MLX5_SEND_WQE_BB);
         curr = uct_ib_mlx5_txwq_wrap_exact(txwq, curr);
         pi++;
@@ -600,7 +594,9 @@ uct_rc_mlx5_base_ep_sgl_zcopy_post(uct_rc_mlx5_base_ep_t *ep,
     uct_ib_mlx5_txwq_ring_doorbell(txwq, ctrl, txwq->sw_pi, 1);
     uct_rc_mlx5_txwq_add_psn(txwq, IBV_QPT_RC, num_packets);
 
-    if (timestamp_ops == NULL) {
+    if (timestamp_op != NULL) {
+        uct_rc_txqp_add_send_op_sn(&ep->super.txqp, timestamp_op, txwq->sig_pi);
+    } else {
         uct_rc_txqp_add_send_comp_sgl_always(
                 &iface->super, &ep->super.txqp, handler, comp, txwq->sig_pi,
                 UCT_RC_IFACE_SEND_OP_FLAG_ZCOPY | op_flags, buffers, lengths,

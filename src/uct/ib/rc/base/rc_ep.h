@@ -284,9 +284,6 @@ void uct_rc_ep_check_completion_handler(uct_rc_iface_send_op_t *op,
 void uct_rc_ep_short_dm_desc_handler(uct_rc_iface_send_op_t *op,
                                      const void *resp);
 
-void uct_rc_ep_send_op_with_info_handler(uct_rc_iface_send_op_t *op,
-                                         const void *resp);
-
 ucs_status_t uct_rc_ep_pending_add(uct_ep_h tl_ep, uct_pending_req_t *n,
                                    unsigned flags);
 
@@ -429,16 +426,6 @@ uct_rc_ep_init_send_op(uct_rc_iface_send_op_t *op, unsigned flags,
     op->length    = length;
 }
 
-static inline void uct_rc_ep_init_send_op_with_info(
-        uct_rc_iface_send_op_with_info_t *op, unsigned flags,
-        uct_rc_send_handler_with_info_t handler, size_t length)
-{
-    uct_rc_ep_init_send_op(&op->super, flags, NULL,
-                           uct_rc_ep_send_op_with_info_handler, length);
-    op->handler   = handler;
-    op->comp_info = NULL;
-}
-
 /* Always create a send op, even if comp is NULL, so that outstanding purge can
  * identify the operation by its completion handler. */
 static UCS_F_ALWAYS_INLINE void
@@ -533,30 +520,15 @@ uct_rc_txqp_completion_op(uct_rc_iface_send_op_t *op, const void *resp)
 }
 
 static UCS_F_ALWAYS_INLINE void
-uct_rc_txqp_completion_desc_with_info(
-        uct_rc_txqp_t *txqp, uint16_t sn,
-        const uct_rc_send_op_completion_info_t *comp_info)
+uct_rc_txqp_completion_desc(uct_rc_txqp_t *txqp, uint16_t sn)
 {
     uct_rc_iface_send_op_t *op;
 
     ucs_trace_poll("txqp %p complete ops up to sn %d", txqp, sn);
     ucs_queue_for_each_extract(op, &txqp->outstanding, queue,
                                UCS_CIRCULAR_COMPARE16(op->sn, <=, sn)) {
-        if ((comp_info != NULL) && (op->sn == sn) &&
-            (op->handler == uct_rc_ep_send_op_with_info_handler)) {
-            ucs_derived_of(op, uct_rc_iface_send_op_with_info_t)->comp_info =
-                    comp_info;
-        }
-
-        uct_rc_txqp_completion_op(op,
-                ucs_derived_of(op, uct_rc_iface_send_desc_t) + 1);
+        uct_rc_txqp_completion_op(op, ucs_derived_of(op, uct_rc_iface_send_desc_t) + 1);
     }
-}
-
-static UCS_F_ALWAYS_INLINE void
-uct_rc_txqp_completion_desc(uct_rc_txqp_t *txqp, uint16_t sn)
-{
-    uct_rc_txqp_completion_desc_with_info(txqp, sn, NULL);
 }
 
 static UCS_F_ALWAYS_INLINE void

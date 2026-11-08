@@ -24,6 +24,21 @@
                                                         uct_rc_mlx5_iface_common_t)
 
 
+static UCS_F_ALWAYS_INLINE int
+uct_rc_mlx5_iface_has_cqe_timestamps(uct_rc_mlx5_iface_common_t *iface)
+{
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+    uct_ib_device_t *dev = uct_ib_iface_device(&iface->super.super);
+
+    return !iface->cq[UCT_IB_DIR_TX].zip &&
+           (dev->dev_attr.completion_timestamp_mask != 0) &&
+           (dev->dev_attr.hca_core_clock != 0);
+#else
+    return 0;
+#endif
+}
+
+
 static UCS_F_ALWAYS_INLINE size_t
 uct_rc_mlx5_base_sgl_zcopy_max_count(uct_rc_mlx5_iface_common_t *iface)
 {

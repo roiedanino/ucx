@@ -21,40 +21,29 @@ extern "C" {
 extern "C" {
 #include <uct/ib/mlx5/rc/rc_mlx5_common.h>
 #include <uct/ib/mlx5/rc/rc_mlx5.h>
-#include <uct/ib/mlx5/ib_mlx5_ext.h>
 }
 #endif
 
 #ifdef HAVE_MLX5_DV
 class test_rc_cqe_timestamp : public uct_test {
-public:
-    ~test_rc_cqe_timestamp() override
-    {
-        if (m_registered) {
-            uct_ib_mlx5_ext_unregister(m_provider.name);
-        }
-    }
-
 protected:
     void init() override
     {
         uct_test::init();
-        if (uct_ib_mlx5_ext_get_rc_provider() != NULL) {
-            UCS_TEST_SKIP_R("An RC extension provider is already registered");
-        }
-        m_ops.requirements = UCT_RC_MLX5_EXT_REQ_TX_CQE_TIMESTAMP;
-        ucs_strncpy_zero(m_provider.name, "test_cqe_timestamp",
-                         sizeof(m_provider.name));
-        m_provider.rc_ops = &m_ops;
-        ASSERT_UCS_OK(uct_ib_mlx5_ext_register(&m_provider));
-        m_registered = true;
+        modify_config("IB_TX_CQE_ZIP_ENABLE", "no");
         m_entity = create_entity(0ul);
         m_entities.push_back(m_entity);
         auto iface = ucs_derived_of(m_entity->iface(),
                                      uct_rc_mlx5_iface_common_t);
-        if (!iface->tx.cqe_timestamp) {
-            UCS_TEST_SKIP_R("Raw CQ timestamps are unavailable");
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+        auto md = ucs_derived_of(m_entity->md(), uct_ib_mlx5_md_t);
+        if ((md->super.dev.dev_attr.completion_timestamp_mask == 0) ||
+            (md->super.dev.dev_attr.hca_core_clock == 0)) {
+            UCS_TEST_SKIP_R("CQ timestamp metadata is unavailable");
         }
+#else
+        UCS_TEST_SKIP_R("CQ timestamp metadata is unavailable");
+#endif
         m_capture.cq = &iface->cq[UCT_IB_DIR_TX];
         m_capture.comp.func = complete;
         m_entity->connect(0, *m_entity, 0);
@@ -93,9 +82,6 @@ protected:
 
     entity *m_entity = nullptr;
     std::unique_ptr<mapped_buffer> m_source, m_target;
-    uct_rc_mlx5_ext_ops_t m_ops = {};
-    uct_ib_mlx5_ext_ops_t m_provider = {};
-    bool m_registered = false;
 };
 
 UCS_TEST_P(test_rc_cqe_timestamp, put)
@@ -2186,10 +2172,18 @@ UCS_TEST_P(test_rc_sgl_completion, failed_post_preserves_adapter)
     auto iface = ucs_derived_of(m_entity->iface(), uct_rc_mlx5_iface_common_t);
     const uint16_t pi = ep()->super.tx.wq.sw_pi;
     const int cq_available = iface->super.tx.cq_available;
+    const int zip = iface->cq[UCT_IB_DIR_TX].zip;
     uct_rc_mlx5_sgl_completion_t saved;
     ucs_status_t status;
 
     memcpy(&saved, m_completion.get(), sizeof(saved));
+
+    iface->cq[UCT_IB_DIR_TX].zip = 1;
+    EXPECT_EQ(UCS_ERR_UNSUPPORTED, uct_rc_mlx5_sgl_completion_init(
+            m_entity->ep(0), element_count, final_cb, this, m_completion.get()));
+    status = post();
+    iface->cq[UCT_IB_DIR_TX].zip = zip;
+    ASSERT_EQ(UCS_ERR_UNSUPPORTED, status);
 
     m_lengths[1] = 0;
     ASSERT_EQ(UCS_ERR_INVALID_PARAM, post());

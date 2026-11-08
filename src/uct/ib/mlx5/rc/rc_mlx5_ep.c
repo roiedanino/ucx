@@ -404,7 +404,7 @@ static ucs_status_t uct_rc_mlx5_ep_put_sgl_with_completion(
         return UCS_ERR_NOT_CONNECTED;
     }
 
-    if (!iface->tx.cqe_timestamp) {
+    if (!uct_rc_mlx5_iface_has_cqe_timestamps(iface)) {
         return UCS_ERR_UNSUPPORTED;
     }
 

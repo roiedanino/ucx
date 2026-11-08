@@ -95,7 +95,6 @@ enum {
     UCT_IB_MLX5_CAP_GENERAL   = 0x0,
     UCT_IB_MLX5_CAP_ODP       = 0x2,
     UCT_IB_MLX5_CAP_ATOMIC    = 0x3,
-    UCT_IB_MLX5_CAP_ROCE      = 0x4,
     UCT_IB_MLX5_CAP_2_GENERAL = 0x20,
 };
 
@@ -598,14 +597,7 @@ struct uct_ib_mlx5_odp_cap_bits {
     uint8_t         reserved_at_620[0x1e0];
 };
 
-struct uct_ib_mlx5_roce_cap_bits {
-    uint8_t reserved_at_0[0x1e];
-    uint8_t qp_ts_format[0x2];
-    uint8_t reserved_at_20[0x7e0];
-};
-
 union uct_ib_mlx5_hca_cap_union_bits {
-    struct uct_ib_mlx5_roce_cap_bits roce_cap;
     struct uct_ib_mlx5_cmd_hca_cap_bits cmd_hca_cap;
     struct uct_ib_mlx5_odp_cap_bits odp_cap;
     struct uct_ib_mlx5_atomic_caps_bits atomic_caps;

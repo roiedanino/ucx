@@ -340,7 +340,10 @@ struct uct_rc_iface_send_op {
     uct_rc_send_handler_t         handler;
     uint16_t                      sn;
     uint16_t                      flags;
-    unsigned                      length;
+    union {
+        unsigned                  length;
+        uint16_t                  first_sn; /* timestamped SGL first WQE */
+    };
     union {
         void                      *buffer;     /* atomics / desc /
                                                   FC_PURE_GRANT request */
@@ -362,10 +365,7 @@ struct uct_rc_iface_send_op {
 
 struct uct_rc_iface_send_desc {
     uct_rc_iface_send_op_t        super;
-    union {
-        uct_unpack_callback_t    unpack_cb;
-        uint16_t                 first_sn; /* first WQE of a timestamped SGL */
-    };
+    uct_unpack_callback_t         unpack_cb;
     uint32_t                      lkey;
 };
 

@@ -21,6 +21,7 @@ extern "C" {
 extern "C" {
 #include <uct/ib/mlx5/rc/rc_mlx5_common.h>
 #include <uct/ib/mlx5/rc/rc_mlx5.h>
+#include <uct/ib/mlx5/ib_mlx5_ext.h>
 }
 #endif
 
@@ -2004,6 +2005,42 @@ UCS_TEST_SKIP_COND_P(test_rc_srq, reorder_cyclic,
 }
 
 UCT_INSTANTIATE_RC_DC_TEST_CASE(test_rc_srq);
+
+class test_rc_sgl_timestamp : public test_rc {};
+
+UCS_TEST_P(test_rc_sgl_timestamp, put, "IB_TX_CQE_ZIP_ENABLE=no")
+{
+    mapped_buffer send(65536, 17, *m_e1), recv(65536, 0, *m_e2);
+    void *buffer = send.ptr();
+    size_t length = send.length();
+    uct_mem_h memh = send.memh();
+    uint64_t remote_addr = recv.addr(), previous = 0;
+    uct_rkey_t rkey = recv.rkey();
+    uct_rc_mlx5_completion_t comp = {};
+
+    comp.super.func = [](uct_completion_t *c) { EXPECT_EQ(UCS_OK, c->status); };
+    for (unsigned i = 0; i < 2; ++i) {
+        comp.super.count  = 1;
+        comp.super.status = UCS_OK;
+        ucs_status_t status = uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
+                m_e1->ep(0), &buffer, &length, &memh, &remote_addr, &rkey,
+                NULL, NULL, 1, &comp);
+        if (status == UCS_ERR_UNSUPPORTED) {
+            UCS_TEST_SKIP_R("CQ timestamps are unavailable");
+        }
+        ASSERT_EQ(UCS_INPROGRESS, status);
+        flush();
+        EXPECT_EQ(0, comp.super.count);
+        EXPECT_EQ(UCS_OK, comp.super.status);
+        if (i != 0) {
+            EXPECT_NE(previous, comp.timestamp);
+        }
+        previous = comp.timestamp;
+        recv.pattern_check(17);
+    }
+}
+
+_UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_timestamp, rc_mlx5)
 
 class test_rc_sgl_completion : public uct_test {
 protected:

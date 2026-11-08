@@ -13,6 +13,7 @@
 #  include <infiniband/driver.h>
 #endif
 
+#include <uct/ib/mlx5/ib_mlx5_ext.h>
 #include <uct/ib/mlx5/ib_mlx5_log.h>
 #include <ucs/vfs/base/vfs_cb.h>
 #include <ucs/vfs/base/vfs_obj.h>
@@ -259,39 +260,15 @@ ucs_status_t uct_rc_mlx5_base_ep_put_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov,
     return status;
 }
 
-void uct_rc_mlx5_sgl_completion(uct_rc_iface_send_op_t *op, const void *resp)
-{
-    uct_rc_mlx5_completion_t *comp;
-    const struct mlx5_cqe64 *cqe = resp;
-    ucs_status_t status;
-
-    /* Generic purge has already invoked the user completion. */
-    if (op->flags & UCT_RC_IFACE_SEND_OP_STATUS) {
-        ucs_mpool_put(op);
-        return;
-    }
-
-    comp   = ucs_derived_of(op->user_comp, uct_rc_mlx5_completion_t);
-    status = (cqe == NULL) ? UCS_ERR_UNSUPPORTED : UCS_OK;
-    if (status == UCS_OK) {
-        comp->timestamp = be64toh(cqe->timestamp);
-    }
-    ucs_mpool_put(op);
-    uct_invoke_completion(&comp->super, status);
-}
-
-static UCS_F_ALWAYS_INLINE ucs_status_t
-uct_rc_mlx5_ep_put_sgl_zcopy_impl(uct_ep_h tl_ep, void *const *buffers,
-                                 const size_t *lengths, uct_mem_h const *memhs,
-                                 const uint64_t *remote_addrs,
-                                 uct_rkey_t const *rkeys, const size_t *counts,
-                                 const size_t *strides, size_t count,
-                                 uct_completion_t *comp,
-                                 uct_rc_send_handler_t handler)
+ucs_status_t
+uct_rc_mlx5_base_ep_put_sgl_zcopy(uct_ep_h tl_ep, void * const *buffers,
+                                  const size_t *lengths, uct_mem_h const *memhs,
+                                  const uint64_t *remote_addrs,
+                                  uct_rkey_t const *rkeys, const size_t *counts,
+                                  const size_t *strides, size_t count,
+                                  uct_completion_t *comp)
 {
     UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
-    uct_rc_iface_send_op_t *op = NULL;
-    uct_rc_iface_send_desc_t *desc;
     size_t UCS_V_UNUSED max_count;
     uint8_t fence_flag;
     ucs_status_t status;
@@ -299,6 +276,7 @@ uct_rc_mlx5_ep_put_sgl_zcopy_impl(uct_ep_h tl_ep, void *const *buffers,
     int fence;
 
     UCT_RC_MLX5_SGL_ZCOPY_CHECK_STRIDES(counts, strides, "put_sgl_zcopy");
+
     max_count = uct_rc_mlx5_base_sgl_zcopy_max_count(iface);
     UCT_CHECK_PARAM(count <= max_count,
                     "put_sgl_zcopy count(%zu) should be limited by %zu", count,
@@ -312,66 +290,92 @@ uct_rc_mlx5_ep_put_sgl_zcopy_impl(uct_ep_h tl_ep, void *const *buffers,
         return status;
     }
 
-    if (handler == uct_rc_mlx5_sgl_completion) {
-        UCT_RC_IFACE_GET_TX_DESC(&iface->super, &iface->super.tx.mp, desc);
-        op = &desc->super;
-        uct_rc_ep_init_send_op(op, UCT_RC_IFACE_SEND_OP_FLAG_ZCOPY, comp,
-                               handler, 0);
-        desc->first_sn = ep->tx.wq.sw_pi;
-    }
-
     fence      = uct_rc_ep_fm(&iface->super, &ep->tx.wq.fi, 1);
     fence_flag = fence ? iface->config.put_fence_flag : 0;
     total      = uct_rc_mlx5_base_ep_sgl_zcopy_post(
             ep, buffers, lengths, memhs, remote_addrs, rkeys, count,
-            MLX5_OPCODE_RDMA_WRITE, fence_flag, fence, handler, 0, comp, op);
+            MLX5_OPCODE_RDMA_WRITE, fence_flag, fence,
+            uct_rc_ep_put_sgl_zcopy_completion_handler, 0, comp);
 
     UCT_TL_EP_STAT_OP(&ep->super.super, PUT, ZCOPY, total);
     uct_rc_ep_enable_flush_remote(&ep->super);
+
     return UCS_INPROGRESS;
 }
 
-ucs_status_t
-uct_rc_mlx5_base_ep_put_sgl_zcopy(uct_ep_h ep, void *const *buffers,
-                                  const size_t *lengths, uct_mem_h const *memhs,
-                                  const uint64_t *remote_addrs,
-                                  uct_rkey_t const *rkeys, const size_t *counts,
-                                  const size_t *strides, size_t count,
-                                  uct_completion_t *comp)
+static void
+uct_rc_mlx5_sgl_timestamp_completion(uct_rc_iface_send_op_t *op,
+                                     const void *UCS_V_UNUSED resp)
 {
-    return uct_rc_mlx5_ep_put_sgl_zcopy_impl(
-            ep, buffers, lengths, memhs, remote_addrs, rkeys, counts, strides,
-            count, comp, uct_rc_ep_put_sgl_zcopy_completion_handler);
+    uct_rc_mlx5_base_ep_t *ep = ucs_derived_of(op->ep, uct_rc_mlx5_base_ep_t);
+    uct_rc_mlx5_iface_common_t *iface =
+            ucs_derived_of(op->ep->iface, uct_rc_mlx5_iface_common_t);
+    uct_ib_mlx5_cq_t *cq = &iface->cq[UCT_IB_DIR_TX];
+    uct_completion_t *comp = NULL;
+    struct mlx5_cqe64 *cqe;
+    ucs_status_t status = UCS_ERR_NO_ELEM;
+
+    /* Purge has already invoked the completion, possibly releasing it. */
+    if (!(op->flags & UCT_RC_IFACE_SEND_OP_STATUS)) {
+        comp = op->user_comp;
+        cqe  = uct_ib_mlx5_get_cqe(cq, cq->cq_ci - 1);
+        if ((ntohs(cqe->wqe_counter) == op->sn) &&
+            ((ntohl(cqe->sop_drop_qpn) & UCS_MASK(UCT_IB_QPN_ORDER)) ==
+             ep->tx.wq.super.qp_num)) {
+            ucs_derived_of(comp, uct_rc_mlx5_completion_t)->timestamp =
+                    be64toh(cqe->timestamp);
+            status = UCS_OK;
+        }
+    }
+
+    op->flags &= ~UCT_RC_IFACE_SEND_OP_STATUS;
+    op->iface  = &iface->super;
+    uct_rc_iface_put_send_op(op);
+    if (comp != NULL) {
+        uct_invoke_completion(comp, status);
+    }
 }
 
 ucs_status_t uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
-        uct_ep_h ep, void *const *buffers, const size_t *lengths,
+        uct_ep_h tl_ep, void *const *buffers, const size_t *lengths,
         uct_mem_h const *memhs, const uint64_t *remote_addrs,
         uct_rkey_t const *rkeys, const size_t *counts, const size_t *strides,
         size_t count, uct_rc_mlx5_completion_t *comp)
 {
+    uct_rc_mlx5_base_ep_t *ep = ucs_derived_of(tl_ep, uct_rc_mlx5_base_ep_t);
+    const uint16_t first_sn = ep->tx.wq.sw_pi;
 #if HAVE_DECL_IBV_QUERY_DEVICE_EX
     uct_rc_mlx5_iface_common_t *iface =
-            ucs_derived_of(ep->iface, uct_rc_mlx5_iface_common_t);
+            ucs_derived_of(tl_ep->iface, uct_rc_mlx5_iface_common_t);
     uct_ib_device_t *dev = uct_ib_iface_device(&iface->super.super);
 #endif
+    uct_rc_iface_send_op_t *op;
+    ucs_status_t status;
 
     if ((comp == NULL) || (count == 0)) {
         return UCS_ERR_INVALID_PARAM;
     }
 #if HAVE_DECL_IBV_QUERY_DEVICE_EX
     if (iface->cq[UCT_IB_DIR_TX].zip ||
-        (dev->dev_attr.completion_timestamp_mask == 0) ||
-        (dev->dev_attr.hca_core_clock == 0)) {
+        (dev->dev_attr.completion_timestamp_mask == 0)) {
         return UCS_ERR_UNSUPPORTED;
     }
 #else
     return UCS_ERR_UNSUPPORTED;
 #endif
 
-    return uct_rc_mlx5_ep_put_sgl_zcopy_impl(
-            ep, buffers, lengths, memhs, remote_addrs, rkeys, counts, strides,
-            count, &comp->super, uct_rc_mlx5_sgl_completion);
+    status = uct_rc_mlx5_base_ep_put_sgl_zcopy(
+            tl_ep, buffers, lengths, memhs, remote_addrs, rkeys, counts,
+            strides, count, &comp->super);
+    if (status == UCS_INPROGRESS) {
+        /* The post queues one send op; worker serialization excludes polling. */
+        op = ucs_queue_tail_elem_non_empty(&ep->super.txqp.outstanding,
+                                           uct_rc_iface_send_op_t, queue);
+        op->handler  = uct_rc_mlx5_sgl_timestamp_completion;
+        op->ep       = tl_ep;
+        op->first_sn = first_sn;
+    }
+    return status;
 }
 
 ucs_status_t
@@ -467,7 +471,7 @@ uct_rc_mlx5_base_ep_get_sgl_zcopy(uct_ep_h tl_ep, void * const *buffers,
             ep, buffers, lengths, memhs, remote_addrs, rkeys, count,
             MLX5_OPCODE_RDMA_READ, fence_flag, 0,
             uct_rc_ep_get_sgl_zcopy_completion_handler,
-            UCT_RC_IFACE_SEND_OP_FLAG_IOV, comp, NULL);
+            UCT_RC_IFACE_SEND_OP_FLAG_IOV, comp);
 
     UCT_TL_EP_STAT_OP(&ep->super.super, GET, ZCOPY, total);
     UCT_RC_RDMA_READ_POSTED(&iface->super, total);
@@ -1107,21 +1111,15 @@ static int
 uct_rc_mlx5_ep_is_timestamped_sgl_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
 {
     uct_rc_iface_send_op_t *op;
-    uct_rc_iface_send_desc_t *desc;
 
     if (ucs_queue_is_empty(&ep->super.txqp.outstanding)) {
         return 0;
     }
-
     op = ucs_queue_head_elem_non_empty(&ep->super.txqp.outstanding,
                                        uct_rc_iface_send_op_t, queue);
-    if (op->handler != uct_rc_mlx5_sgl_completion) {
-        return 0;
-    }
-
-    desc = ucs_derived_of(op, uct_rc_iface_send_desc_t);
-    return (uint16_t)(pi - desc->first_sn) <=
-           (uint16_t)(op->sn - desc->first_sn);
+    return (op->handler == uct_rc_mlx5_sgl_timestamp_completion) &&
+           ((uint16_t)(pi - op->first_sn) <=
+            (uint16_t)(op->sn - op->first_sn));
 }
 
 static void uct_rc_mlx5_op_callback_data_fill_iov(
@@ -1888,8 +1886,7 @@ uct_rc_mlx5_ep_outstanding_complete_send_ops(uct_rc_iface_t *iface,
 
     ucs_queue_for_each_extract(op, &ep->super.txqp.outstanding, queue,
                                UCS_CIRCULAR_COMPARE16(op->sn, <=, pi)) {
-        if (op->handler == uct_rc_mlx5_sgl_completion) {
-            /* Purge cannot supply the operation's CQE timestamp. */
+        if (op->handler == uct_rc_mlx5_sgl_timestamp_completion) {
             op->flags |= UCT_RC_IFACE_SEND_OP_STATUS;
             uct_invoke_completion(op->user_comp, UCS_ERR_CANCELED);
             uct_rc_txqp_completion_op(op, NULL);

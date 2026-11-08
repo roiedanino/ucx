@@ -94,7 +94,9 @@ protected:
 
 UCS_TEST_P(test_rc_cqe_timestamp, put)
 {
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
     uint64_t previous = 0;
+#endif
 
     for (unsigned i = 0; i < 2; ++i) {
         m_capture.comp.count = 1;
@@ -110,8 +112,8 @@ UCS_TEST_P(test_rc_cqe_timestamp, put)
             EXPECT_GT((m_capture.timestamp - previous) &
                       md->super.dev.dev_attr.completion_timestamp_mask, 0ul);
         }
-#endif
         previous = m_capture.timestamp;
+#endif
         flush();
         m_target->pattern_check(17);
     }

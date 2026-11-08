@@ -27,6 +27,14 @@ extern "C" {
 
 #ifdef HAVE_MLX5_DV
 class test_rc_cqe_timestamp : public uct_test {
+public:
+    ~test_rc_cqe_timestamp() override
+    {
+        if (m_registered) {
+            uct_ib_mlx5_ext_unregister(m_provider.name);
+        }
+    }
+
 protected:
     void init() override
     {
@@ -62,9 +70,6 @@ protected:
         m_target.reset();
         m_source.reset();
         uct_test::cleanup();
-        if (m_registered) {
-            uct_ib_mlx5_ext_unregister(m_provider.name);
-        }
     }
 
     struct capture {

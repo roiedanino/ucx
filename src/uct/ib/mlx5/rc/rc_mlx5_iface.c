@@ -847,9 +847,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_common_t, uct_iface_ops_t *tl_ops,
 
     init_attr->flags |= UCT_IB_CQ_IGNORE_OVERRUN;
     uct_ib_mlx5_parse_cqe_zipping(md, &mlx5_config->super, init_attr);
-    if (init_attr->flags & UCT_IB_CQ_COMPLETION_TIMESTAMP) {
-        init_attr->cqe_zip_sizes[UCT_IB_DIR_TX] = 0;
-    }
 
     status = uct_rc_mlx5_iface_preinit(self, tl_md, rc_config, mlx5_config,
                                        params, init_attr);
@@ -871,8 +868,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_common_t, uct_iface_ops_t *tl_ops,
     self->tx.mmio_mode        = mlx5_config->super.mmio_mode;
     self->tx.bf_copy_mode     = mlx5_config->super.bf_copy_mode;
     self->tx.bb_max           = ucs_min(mlx5_config->tx_max_bb, UINT16_MAX);
-    self->tx.cqe_timestamp    = !!(init_attr->flags &
-                                   UCT_IB_CQ_COMPLETION_TIMESTAMP);
     self->tm.am_desc.super.cb = uct_rc_mlx5_release_desc;
 
     if (!UCT_RC_MLX5_MP_ENABLED(self)) {
@@ -1004,10 +999,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                                                         uct_rc_mlx5_iface_config_t);
     uct_ib_mlx5_md_t *md               = ucs_derived_of(tl_md, uct_ib_mlx5_md_t);
     uct_ib_iface_init_attr_t init_attr = {};
-    const uct_ib_mlx5_ext_ops_t *provider =
-            uct_ib_mlx5_ext_get_rc_provider();
-    const uct_rc_mlx5_ext_ops_t *ext_ops =
-            (provider == NULL) ? NULL : provider->rc_ops;
     ucs_status_t status;
 
     init_attr.fc_req_size           = sizeof(uct_rc_pending_req_t);
@@ -1032,22 +1023,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                                               "rc_mlx5");
     if (status != UCS_OK) {
         return status;
-    }
-
-    if ((ext_ops != NULL) &&
-        (ext_ops->requirements & UCT_RC_MLX5_EXT_REQ_TX_CQE_TIMESTAMP)) {
-#if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE && \
-    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && \
-    HAVE_DECL_IBV_QUERY_DEVICE_EX
-        if ((md->super.dev.dev_attr.completion_timestamp_mask != 0) &&
-            (md->super.dev.dev_attr.hca_core_clock != 0)) {
-            init_attr.flags |= UCT_IB_CQ_COMPLETION_TIMESTAMP;
-        }
-#endif
-        if (!(init_attr.flags & UCT_IB_CQ_COMPLETION_TIMESTAMP) &&
-            (ext_ops->flags & UCT_RC_MLX5_EXT_FLAG_REQUIRE_IFACE_ATTACH)) {
-            return UCS_ERR_UNSUPPORTED;
-        }
     }
 
     UCS_CLASS_CALL_SUPER_INIT(uct_rc_mlx5_iface_common_t,

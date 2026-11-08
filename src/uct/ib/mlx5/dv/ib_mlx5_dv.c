@@ -215,9 +215,7 @@ ucs_status_t uct_ib_mlx5_devx_create_qp_common(uct_ib_iface_t *iface,
         UCT_IB_MLX5DV_SET(qpc, qpc, dbr_umem_id, qp->devx.dbrec->mem_id);
     }
     UCT_IB_MLX5DV_SET(qpc, qpc, user_index, attr->uidx);
-    UCT_IB_MLX5DV_SET(qpc, qpc, ts_format,
-                      attr->cqe_timestamp ? UCT_IB_MLX5_QPC_TS_FORMAT_FREE_RUNNING :
-                                            UCT_IB_MLX5_QPC_TS_FORMAT_DEFAULT);
+    UCT_IB_MLX5DV_SET(qpc, qpc, ts_format, UCT_IB_MLX5_QPC_TS_FORMAT_DEFAULT);
 
     if ((qp->devx.wq_buf == NULL) && (attr->umem_offset == 0)) {
         UCT_IB_MLX5DV_SET(qpc, qpc, no_sq, true);

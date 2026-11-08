@@ -288,7 +288,6 @@ ucs_status_t uct_rc_mlx5_iface_create_qp(uct_rc_mlx5_iface_common_t *iface,
     uint64_t cookie;
 
     if (md->flags & UCT_IB_MLX5_MD_FLAG_DEVX_RC_QP) {
-        attr->cqe_timestamp = iface->tx.cqe_timestamp;
         attr->uidx      = 0xffffff;
         status          = uct_ib_mlx5_devx_create_qp(ib_iface,
                                                      &iface->cq[UCT_IB_DIR_TX],
@@ -996,30 +995,6 @@ typedef struct {
     uct_rc_mlx5_iface_common_t  super;
 } uct_rc_mlx5_iface_t;
 
-#if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE && \
-    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && \
-    HAVE_DECL_IBV_QUERY_DEVICE_EX && HAVE_DEVX
-static int uct_rc_mlx5_iface_raw_timestamp_supported(uct_ib_mlx5_md_t *md)
-{
-    char out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
-    unsigned format;
-
-    if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX) ||
-        (md->super.dev.dev_attr.hca_core_clock == 0) ||
-        (md->super.dev.dev_attr.completion_timestamp_mask == 0) ||
-        (uct_ib_mlx5_devx_query_cap(md->super.dev.ibv_context,
-             (UCT_IB_MLX5_CAP_ROCE << 1) | UCT_IB_MLX5_HCA_CAP_OPMOD_GET_CUR,
-             out, sizeof(out), "QUERY_HCA_CAP, RoCE", 1) != UCS_OK)) {
-        return 0;
-    }
-
-    format = UCT_IB_MLX5DV_GET(query_hca_cap_out, out,
-                               capability.roce_cap.qp_ts_format);
-    /* 0: free-running; 1: real-time only; 2: both clock formats. */
-    return (format == 0) || (format == 2);
-}
-#endif
-
 UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                     uct_md_h tl_md, uct_worker_h worker,
                     const uct_iface_params_t *params,
@@ -1063,8 +1038,9 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
         (ext_ops->requirements & UCT_RC_MLX5_EXT_REQ_TX_CQE_TIMESTAMP)) {
 #if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE && \
     HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && \
-    HAVE_DECL_IBV_QUERY_DEVICE_EX && HAVE_DEVX
-        if (uct_rc_mlx5_iface_raw_timestamp_supported(md)) {
+    HAVE_DECL_IBV_QUERY_DEVICE_EX
+        if ((md->super.dev.dev_attr.completion_timestamp_mask != 0) &&
+            (md->super.dev.dev_attr.hca_core_clock != 0)) {
             init_attr.flags |= UCT_IB_CQ_COMPLETION_TIMESTAMP;
         }
 #endif

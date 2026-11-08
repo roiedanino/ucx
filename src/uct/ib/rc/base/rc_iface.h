@@ -362,7 +362,10 @@ struct uct_rc_iface_send_op {
 
 struct uct_rc_iface_send_desc {
     uct_rc_iface_send_op_t        super;
-    uct_unpack_callback_t         unpack_cb;
+    union {
+        uct_unpack_callback_t    unpack_cb;
+        uint16_t                 first_sn; /* first WQE of a timestamped SGL */
+    };
     uint32_t                      lkey;
 };
 

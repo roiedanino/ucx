@@ -669,7 +669,6 @@ typedef struct uct_ib_mlx5_qp_attr {
     uint32_t                    uidx;
     int                         full_handshake;
     int                         rdma_wr_disabled;
-    uint8_t                     cqe_timestamp;
     uint8_t                     log_num_dci_stream_channels;
     unsigned                    max_tx;
     unsigned                    len;

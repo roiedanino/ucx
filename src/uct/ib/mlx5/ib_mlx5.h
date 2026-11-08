@@ -19,10 +19,6 @@
 #include <ucs/type/status.h>
 #include <ucs/sys/ptr_arith.h>
 
-#ifdef HAVE_TL_RC
-const struct uct_ib_mlx5_ext_ops *uct_ib_mlx5_ext_get_rc_provider(void);
-#endif
-
 /**
  * When using a clang version that is higher than 3.0, the GNUC_MINOR is set
  * to 2, which affects the offset of several fields that are used by UCX from

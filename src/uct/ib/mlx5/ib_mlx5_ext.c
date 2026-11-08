@@ -9,7 +9,6 @@
 #endif
 
 #include "ib_mlx5_ext.h"
-#include "ib_mlx5.h"
 
 #include <ucs/datastruct/list.h>
 #include <ucs/debug/log.h>
@@ -109,21 +108,6 @@ uct_ib_mlx5_ext_ep_get_sgl_zcopy(uct_ep_h ep, void * const *buffers,
 
     return UCS_ERR_UNSUPPORTED;
 }
-
-#ifdef HAVE_TL_RC
-const uct_ib_mlx5_ext_ops_t *uct_ib_mlx5_ext_get_rc_provider(void)
-{
-    uct_ib_mlx5_ext_plugin_t *plugin;
-
-    ucs_list_for_each(plugin, &uct_ib_mlx5_ext_plugins, list) {
-        if (plugin->ops.rc_ops != NULL) {
-            return &plugin->ops;
-        }
-    }
-
-    return NULL;
-}
-#endif
 
 void uct_ib_mlx5_ext_cleanup(void)
 {

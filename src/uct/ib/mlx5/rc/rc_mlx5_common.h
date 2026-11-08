@@ -348,7 +348,6 @@ typedef struct uct_rc_mlx5_iface_common {
         ucs_mpool_t                    atomic_desc_mp;
         uct_ib_mlx5_mmio_mode_t        mmio_mode;
         uct_ib_mlx5_bf_copy_mode_t     bf_copy_mode;
-        int                            cqe_timestamp;
         uint16_t                       bb_max;     /* limit number of outstanding WQE BBs */
     } tx;
     struct {

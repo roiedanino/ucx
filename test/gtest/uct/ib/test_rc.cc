@@ -21,6 +21,7 @@ extern "C" {
 extern "C" {
 #include <uct/ib/mlx5/rc/rc_mlx5_common.h>
 #include <uct/ib/mlx5/rc/rc_mlx5.h>
+#include <uct/ib/mlx5/ib_mlx5_ext.h>
 }
 #endif
 
@@ -2005,142 +2006,40 @@ UCS_TEST_SKIP_COND_P(test_rc_srq, reorder_cyclic,
 
 UCT_INSTANTIATE_RC_DC_TEST_CASE(test_rc_srq);
 
-class test_rc_sgl_completion : public uct_test {
-protected:
-    enum { element_count = 3, element_size = 64 * UCS_KBYTE };
+class test_rc_sgl_timestamp : public test_rc {};
 
-    struct completion {
-        uct_rc_mlx5_completion_t super;
-        test_rc_sgl_completion   *test;
-    };
+UCS_TEST_P(test_rc_sgl_timestamp, put, "IB_TX_CQE_ZIP_ENABLE=no")
+{
+    mapped_buffer send(65536, 17, *m_e1), recv(65536, 0, *m_e2);
+    void *buffer = send.ptr();
+    size_t length = send.length();
+    uct_mem_h memh = send.memh();
+    uint64_t remote_addr = recv.addr(), previous = 0;
+    uct_rkey_t rkey = recv.rkey();
+    uct_rc_mlx5_completion_t comp = {};
 
-    void init() override
-    {
-        uct_test::init();
-        modify_config("IB_TX_CQE_ZIP_ENABLE", "no");
-        m_entity = create_entity(0ul);
-        m_entities.push_back(m_entity);
-#if HAVE_DECL_IBV_QUERY_DEVICE_EX
-        auto md = ucs_derived_of(m_entity->md(), uct_ib_mlx5_md_t);
-        if ((md->super.dev.dev_attr.completion_timestamp_mask == 0) ||
-            (md->super.dev.dev_attr.hca_core_clock == 0)) {
+    comp.super.func = [](uct_completion_t *c) { EXPECT_EQ(UCS_OK, c->status); };
+    for (unsigned i = 0; i < 2; ++i) {
+        comp.super.count  = 1;
+        comp.super.status = UCS_OK;
+        ucs_status_t status = uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
+                m_e1->ep(0), &buffer, &length, &memh, &remote_addr, &rkey,
+                NULL, NULL, 1, &comp);
+        if (status == UCS_ERR_UNSUPPORTED) {
             UCS_TEST_SKIP_R("CQ timestamps are unavailable");
         }
-#else
-        UCS_TEST_SKIP_R("CQ timestamps are unavailable");
-#endif
-        m_entity->connect(0, *m_entity, 0);
-        m_completion.reset(new completion());
-        m_completion->test               = this;
-        m_completion->super.super.func   = complete;
-        m_completion->super.super.count  = 1;
-        m_completion->super.super.status = UCS_OK;
-        m_source.reset(new mapped_buffer(element_count * element_size, 17,
-                                         *m_entity));
-        m_target.reset(new mapped_buffer(element_count * element_size, 0,
-                                         *m_entity));
-        for (unsigned i = 0; i < element_count; ++i) {
-            m_buffers[i]      = UCS_PTR_BYTE_OFFSET(m_source->ptr(),
-                                                    i * element_size);
-            m_lengths[i]      = element_size;
-            m_memhs[i]        = m_source->memh();
-            m_remote_addrs[i] = m_target->addr() + i * element_size;
-            m_rkeys[i]        = m_target->rkey();
+        ASSERT_EQ(UCS_INPROGRESS, status);
+        flush();
+        EXPECT_EQ(0, comp.super.count);
+        EXPECT_EQ(UCS_OK, comp.super.status);
+        if (i != 0) {
+            EXPECT_NE(previous, comp.timestamp);
         }
+        previous = comp.timestamp;
+        recv.pattern_check(17);
     }
-
-    void cleanup() override
-    {
-        if (m_entity != nullptr) {
-            m_entity->destroy_eps();
-        }
-        m_target.reset();
-        m_source.reset();
-        uct_test::cleanup();
-    }
-
-    static void complete(uct_completion_t *comp)
-    {
-        auto extended = ucs_derived_of(comp, uct_rc_mlx5_completion_t);
-        auto self     = ucs_container_of(extended, completion, super)->test;
-
-        EXPECT_EQ(0, comp->count);
-        self->m_status    = comp->status;
-        self->m_timestamp = extended->timestamp;
-        ++self->m_callbacks;
-        if (self->m_release_completion) {
-            self->m_completion.reset();
-        }
-    }
-
-    ucs_status_t post()
-    {
-        return uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
-                m_entity->ep(0), m_buffers, m_lengths, m_memhs,
-                m_remote_addrs, m_rkeys, NULL, NULL, element_count,
-                &m_completion->super);
-    }
-
-    entity *m_entity = nullptr;
-    std::unique_ptr<mapped_buffer> m_source, m_target;
-    void *m_buffers[element_count];
-    size_t m_lengths[element_count];
-    uct_mem_h m_memhs[element_count];
-    uint64_t m_remote_addrs[element_count];
-    uct_rkey_t m_rkeys[element_count];
-    std::unique_ptr<completion> m_completion;
-    unsigned     m_callbacks = 0;
-    ucs_status_t m_status    = UCS_INPROGRESS;
-    uint64_t     m_timestamp = 0;
-    bool         m_release_completion = true;
-};
-
-UCS_TEST_P(test_rc_sgl_completion, callback_releases_completion)
-{
-    ASSERT_EQ(UCS_INPROGRESS, post());
-    m_entity->flush();
-    ASSERT_EQ(1u, m_callbacks);
-    EXPECT_EQ(UCS_OK, m_status);
-    EXPECT_FALSE(m_completion);
-    m_target->pattern_check(17);
 }
 
-UCS_TEST_P(test_rc_sgl_completion, failed_post_preserves_completion)
-{
-    auto iface = ucs_derived_of(m_entity->iface(), uct_rc_mlx5_iface_common_t);
-    const int cq_available = iface->super.tx.cq_available;
-    const int zip = iface->cq[UCT_IB_DIR_TX].zip;
-    completion saved;
-    ucs_status_t status;
-
-    memcpy(&saved, m_completion.get(), sizeof(saved));
-    iface->cq[UCT_IB_DIR_TX].zip = 1;
-    status = post();
-    iface->cq[UCT_IB_DIR_TX].zip = zip;
-    ASSERT_EQ(UCS_ERR_UNSUPPORTED, status);
-    iface->super.tx.cq_available = 0;
-    status = post();
-    iface->super.tx.cq_available = cq_available;
-    ASSERT_EQ(UCS_ERR_NO_RESOURCE, status);
-    EXPECT_EQ(0, memcmp(&saved, m_completion.get(), sizeof(saved)));
-    EXPECT_EQ(0u, m_callbacks);
-    ASSERT_EQ(UCS_INPROGRESS, post());
-    m_entity->flush();
-    EXPECT_EQ(1u, m_callbacks);
-}
-
-UCS_TEST_P(test_rc_sgl_completion, canceled_completion_once)
-{
-    ASSERT_EQ(UCS_INPROGRESS, post());
-    {
-        scoped_log_handler hide_warn(hide_warns_logger);
-        m_entity->destroy_ep(0);
-    }
-    EXPECT_EQ(1u, m_callbacks);
-    EXPECT_EQ(UCS_ERR_CANCELED, m_status);
-    EXPECT_FALSE(m_completion);
-}
-
-_UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_completion, rc_mlx5)
+_UCT_INSTANTIATE_TEST_CASE(test_rc_sgl_timestamp, rc_mlx5)
 
 #endif

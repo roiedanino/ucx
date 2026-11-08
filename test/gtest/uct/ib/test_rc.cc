@@ -22,7 +22,6 @@ extern "C" {
 #include <uct/ib/mlx5/rc/rc_mlx5_common.h>
 #include <uct/ib/mlx5/rc/rc_mlx5.h>
 #include <uct/ib/mlx5/ib_mlx5_ext.h>
-#include <uct/ib/mlx5/ib_mlx5.inl>
 }
 #endif
 
@@ -80,8 +79,10 @@ protected:
         auto c = ucs_container_of(comp, capture, comp);
         EXPECT_EQ(UCS_OK, comp->status);
         /* This fixture has one outstanding write on an uncompressed TX CQ. */
-        c->timestamp = be64toh(uct_ib_mlx5_get_cqe(
-                c->cq, c->cq->cq_ci - 1)->timestamp);
+        auto cqe = static_cast<mlx5_cqe64*>(UCS_PTR_BYTE_OFFSET(c->cq->cq_buf,
+                ((c->cq->cq_ci - 1) & c->cq->cq_length_mask) <<
+                c->cq->cqe_size_log));
+        c->timestamp = be64toh(cqe->timestamp);
         c->completed = 1;
     }
 

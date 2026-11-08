@@ -342,7 +342,7 @@ struct uct_rc_iface_send_op {
     uint16_t                      flags;
     union {
         unsigned                  length;
-        uint16_t                  first_sn; /* timestamped SGL first WQE */
+        uint16_t                  sgl_start_pi; /* SGL start producer index */
     };
     union {
         void                      *buffer;     /* atomics / desc /

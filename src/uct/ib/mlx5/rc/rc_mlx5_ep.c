@@ -343,7 +343,7 @@ ucs_status_t uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
         size_t count, uct_rc_mlx5_completion_t *comp)
 {
     uct_rc_mlx5_base_ep_t *ep = ucs_derived_of(tl_ep, uct_rc_mlx5_base_ep_t);
-    const uint16_t first_sn = ep->tx.wq.sw_pi;
+    const uint16_t sgl_start_pi = ep->tx.wq.sw_pi;
 #if HAVE_DECL_IBV_QUERY_DEVICE_EX
     uct_rc_mlx5_iface_common_t *iface =
             ucs_derived_of(tl_ep->iface, uct_rc_mlx5_iface_common_t);
@@ -371,9 +371,9 @@ ucs_status_t uct_rc_mlx5_ep_put_sgl_zcopy_timestamped(
         /* The post queues one send op; worker serialization excludes polling. */
         op = ucs_queue_tail_elem_non_empty(&ep->super.txqp.outstanding,
                                            uct_rc_iface_send_op_t, queue);
-        op->handler  = uct_rc_mlx5_sgl_timestamp_completion;
-        op->ep       = tl_ep;
-        op->first_sn = first_sn;
+        op->handler      = uct_rc_mlx5_sgl_timestamp_completion;
+        op->ep           = tl_ep;
+        op->sgl_start_pi = sgl_start_pi;
     }
     return status;
 }
@@ -1118,8 +1118,8 @@ uct_rc_mlx5_ep_is_timestamped_sgl_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
     op = ucs_queue_head_elem_non_empty(&ep->super.txqp.outstanding,
                                        uct_rc_iface_send_op_t, queue);
     return (op->handler == uct_rc_mlx5_sgl_timestamp_completion) &&
-           ((uint16_t)(pi - op->first_sn) <=
-            (uint16_t)(op->sn - op->first_sn));
+           ((uint16_t)(pi - op->sgl_start_pi) <=
+            (uint16_t)(op->sn - op->sgl_start_pi));
 }
 
 static void uct_rc_mlx5_op_callback_data_fill_iov(

@@ -110,6 +110,7 @@ uct_ib_mlx5_ext_ep_get_sgl_zcopy(uct_ep_h ep, void * const *buffers,
     return UCS_ERR_UNSUPPORTED;
 }
 
+#ifdef HAVE_TL_RC
 const uct_ib_mlx5_ext_ops_t *uct_ib_mlx5_ext_get_rc_provider(void)
 {
     uct_ib_mlx5_ext_plugin_t *plugin;
@@ -122,6 +123,7 @@ const uct_ib_mlx5_ext_ops_t *uct_ib_mlx5_ext_get_rc_provider(void)
 
     return NULL;
 }
+#endif
 
 void uct_ib_mlx5_ext_cleanup(void)
 {

@@ -103,10 +103,6 @@ uct_rc_mlx5_iface_check_rx_completion(uct_ib_iface_t   *ib_iface,
     return NULL;
 }
 
-enum {
-    UCT_RC_MLX5_POLL_FLAG_TIMESTAMP = UCS_BIT(5)
-};
-
 static UCS_F_ALWAYS_INLINE unsigned
 uct_rc_mlx5_iface_progress(void *arg, int flags)
 {
@@ -116,10 +112,6 @@ uct_rc_mlx5_iface_progress(void *arg, int flags)
     count = uct_rc_mlx5_iface_common_poll_rx(iface, flags);
     if (!uct_rc_iface_poll_tx(&iface->super, count)) {
         return count;
-    }
-
-    if (flags & UCT_RC_MLX5_POLL_FLAG_TIMESTAMP) {
-        return count + uct_rc_mlx5_iface_poll_tx_with_info(iface, flags);
     }
 
     return count + uct_rc_mlx5_iface_poll_tx(iface, flags);
@@ -149,23 +141,6 @@ static unsigned uct_rc_mlx5_iface_progress_tm(void *arg)
                                            UCT_IB_MLX5_POLL_FLAG_TM |
                                            UCT_IB_MLX5_POLL_FLAG_CQE_ZIP);
 }
-
-#define UCT_RC_MLX5_TIMESTAMP_PROGRESS(_name, _flags) \
-    static unsigned uct_rc_mlx5_iface_progress_##_name##_timestamp(void *arg) \
-    { \
-        return uct_rc_mlx5_iface_progress( \
-                arg, (_flags) | UCT_RC_MLX5_POLL_FLAG_TIMESTAMP); \
-    }
-
-UCT_RC_MLX5_TIMESTAMP_PROGRESS(cyclic, UCT_IB_MLX5_POLL_FLAG_HAS_EP)
-UCT_RC_MLX5_TIMESTAMP_PROGRESS(cyclic_zip, UCT_IB_MLX5_POLL_FLAG_HAS_EP |
-                                          UCT_IB_MLX5_POLL_FLAG_CQE_ZIP)
-UCT_RC_MLX5_TIMESTAMP_PROGRESS(ll, UCT_IB_MLX5_POLL_FLAG_HAS_EP |
-                                  UCT_IB_MLX5_POLL_FLAG_LINKED_LIST |
-                                  UCT_IB_MLX5_POLL_FLAG_CQE_ZIP)
-UCT_RC_MLX5_TIMESTAMP_PROGRESS(tm, UCT_IB_MLX5_POLL_FLAG_HAS_EP |
-                                  UCT_IB_MLX5_POLL_FLAG_TM |
-                                  UCT_IB_MLX5_POLL_FLAG_CQE_ZIP)
 
 static ucs_status_t uct_rc_mlx5_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
 {
@@ -1022,21 +997,19 @@ typedef struct {
 } uct_rc_mlx5_iface_t;
 
 #if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE && \
-    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && HAVE_DECL_IBV_QUERY_DEVICE_EX
+    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && \
+    HAVE_DECL_IBV_QUERY_DEVICE_EX && HAVE_DEVX
 static int uct_rc_mlx5_iface_raw_timestamp_supported(uct_ib_mlx5_md_t *md)
 {
-#if HAVE_DEVX
     char out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
     unsigned format;
-#endif
 
-    if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX)) {
-        return 0;
-    }
-#if HAVE_DEVX
-    if (uct_ib_mlx5_devx_query_cap(md->super.dev.ibv_context,
-            (UCT_IB_MLX5_CAP_ROCE << 1) | UCT_IB_MLX5_HCA_CAP_OPMOD_GET_CUR,
-            out, sizeof(out), "QUERY_HCA_CAP, RoCE", 1) != UCS_OK) {
+    if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX) ||
+        (md->super.dev.dev_attr.hca_core_clock == 0) ||
+        (md->super.dev.dev_attr.completion_timestamp_mask == 0) ||
+        (uct_ib_mlx5_devx_query_cap(md->super.dev.ibv_context,
+             (UCT_IB_MLX5_CAP_ROCE << 1) | UCT_IB_MLX5_HCA_CAP_OPMOD_GET_CUR,
+             out, sizeof(out), "QUERY_HCA_CAP, RoCE", 1) != UCS_OK)) {
         return 0;
     }
 
@@ -1044,9 +1017,6 @@ static int uct_rc_mlx5_iface_raw_timestamp_supported(uct_ib_mlx5_md_t *md)
                                capability.roce_cap.qp_ts_format);
     /* 0: free-running; 1: real-time only; 2: both clock formats. */
     return (format == 0) || (format == 2);
-#else
-    return 0;
-#endif
 }
 #endif
 
@@ -1092,10 +1062,9 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
     if ((ext_ops != NULL) &&
         (ext_ops->requirements & UCT_RC_MLX5_EXT_REQ_TX_CQE_TIMESTAMP)) {
 #if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE && \
-    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && HAVE_DECL_IBV_QUERY_DEVICE_EX
-        if ((md->super.dev.dev_attr.hca_core_clock != 0) &&
-            (md->super.dev.dev_attr.completion_timestamp_mask != 0) &&
-            uct_rc_mlx5_iface_raw_timestamp_supported(md)) {
+    HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP && \
+    HAVE_DECL_IBV_QUERY_DEVICE_EX && HAVE_DEVX
+        if (uct_rc_mlx5_iface_raw_timestamp_supported(md)) {
             init_attr.flags |= UCT_IB_CQ_COMPLETION_TIMESTAMP;
         }
 #endif
@@ -1109,23 +1078,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                               &uct_rc_mlx5_iface_tl_ops, &uct_rc_mlx5_iface_ops,
                               tl_md, worker, params, &config->super.super,
                               &config->rc_mlx5_common, &init_attr);
-
-    if (self->super.tx.cqe_timestamp) {
-        if (self->super.super.progress == uct_rc_mlx5_iface_progress_tm) {
-            self->super.super.progress =
-                    uct_rc_mlx5_iface_progress_tm_timestamp;
-        } else if (self->super.super.progress == uct_rc_mlx5_iface_progress_ll) {
-            self->super.super.progress =
-                    uct_rc_mlx5_iface_progress_ll_timestamp;
-        } else if (self->super.super.progress ==
-                   uct_rc_mlx5_iface_progress_cyclic_zip) {
-            self->super.super.progress =
-                    uct_rc_mlx5_iface_progress_cyclic_zip_timestamp;
-        } else {
-            self->super.super.progress =
-                    uct_rc_mlx5_iface_progress_cyclic_timestamp;
-        }
-    }
 
     status = uct_rc_init_fc_thresh(&config->super, &self->super.super);
     if (status != UCS_OK) {

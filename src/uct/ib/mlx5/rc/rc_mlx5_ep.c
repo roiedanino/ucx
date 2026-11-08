@@ -332,26 +332,23 @@ void uct_rc_mlx5_sgl_completion_marker(uct_completion_t *completion)
               completion);
 }
 
-static void uct_rc_mlx5_sgl_completion(
-        uct_rc_iface_send_op_t *send_op,
-        const uct_rc_send_op_completion_info_t *comp_info)
+void uct_rc_mlx5_sgl_completion(uct_rc_iface_send_op_t *send_op, const void *resp)
 {
-    uct_rc_iface_send_op_with_info_t *op =
-            ucs_derived_of(send_op, uct_rc_iface_send_op_with_info_t);
     uct_rc_mlx5_sgl_checkpoint_t *checkpoint =
-            ucs_container_of(op, uct_rc_mlx5_sgl_checkpoint_t, op);
+            ucs_container_of(send_op, uct_rc_mlx5_sgl_checkpoint_t, op);
+    const struct mlx5_cqe64 *cqe = resp;
     uct_rc_mlx5_sgl_context_t *context = checkpoint->context;
     uct_rc_mlx5_sgl_completion_t *completion = context->completion;
     ucs_status_t status = (send_op->flags & UCT_RC_IFACE_SEND_OP_STATUS) ?
                           send_op->status : UCS_OK;
     uint64_t timestamp = 0;
 
-    if ((comp_info != NULL) &&
-        (comp_info->field_mask &
-         UCT_RC_SEND_OP_COMPLETION_INFO_FIELD_TIMESTAMP)) {
-        timestamp = comp_info->timestamp;
-    } else if (status == UCS_OK) {
-        status = UCS_ERR_UNSUPPORTED;
+    if (status == UCS_OK) {
+        if (cqe == NULL) {
+            status = UCS_ERR_UNSUPPORTED;
+        } else {
+            timestamp = be64toh(cqe->timestamp);
+        }
     }
 
     ucs_assert(completion->super.count > 0);
@@ -441,9 +438,9 @@ static ucs_status_t uct_rc_mlx5_ep_put_sgl_with_completion(
         checkpoint          = &context->checkpoints[i];
         checkpoint->context = context;
         checkpoint->index   = (i == 0) ? 0 : count - 1;
-        uct_rc_ep_init_send_op_with_info(
+        uct_rc_ep_init_send_op(
                 &checkpoint->op, UCT_RC_IFACE_SEND_OP_FLAG_ZCOPY,
-                uct_rc_mlx5_sgl_completion, lengths[checkpoint->index]);
+                NULL, uct_rc_mlx5_sgl_completion, lengths[checkpoint->index]);
     }
 
     completion->super.count  = ucs_static_array_size(context->checkpoints);
@@ -1192,7 +1189,6 @@ static int
 uct_rc_mlx5_ep_is_sgl_checkpoint_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
 {
     uct_rc_iface_send_op_t *op;
-    uct_rc_iface_send_op_with_info_t *op_with_info;
     uct_rc_mlx5_sgl_checkpoint_t *checkpoint;
 
     if (ucs_queue_is_empty(&ep->super.txqp.outstanding)) {
@@ -1201,16 +1197,11 @@ uct_rc_mlx5_ep_is_sgl_checkpoint_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
 
     op = ucs_queue_head_elem_non_empty(&ep->super.txqp.outstanding,
                                        uct_rc_iface_send_op_t, queue);
-    if (op->handler != uct_rc_ep_send_op_with_info_handler) {
+    if (op->handler != uct_rc_mlx5_sgl_completion) {
         return 0;
     }
 
-    op_with_info = ucs_derived_of(op, uct_rc_iface_send_op_with_info_t);
-    if (op_with_info->handler != uct_rc_mlx5_sgl_completion) {
-        return 0;
-    }
-
-    checkpoint = ucs_container_of(op_with_info, uct_rc_mlx5_sgl_checkpoint_t,
+    checkpoint = ucs_container_of(op, uct_rc_mlx5_sgl_checkpoint_t,
                                   op);
     return (uint16_t)(pi - checkpoint->context->first_sn) <
            checkpoint->context->count;
@@ -1980,7 +1971,7 @@ uct_rc_mlx5_ep_outstanding_complete_send_ops(uct_rc_iface_t *iface,
 
     ucs_queue_for_each_extract(op, &ep->super.txqp.outstanding, queue,
                                UCS_CIRCULAR_COMPARE16(op->sn, <=, pi)) {
-        if (op->handler == uct_rc_ep_send_op_with_info_handler) {
+        if (op->handler == uct_rc_mlx5_sgl_completion) {
             op->status = status;
             op->flags |= UCT_RC_IFACE_SEND_OP_STATUS;
             uct_rc_txqp_completion_op(op, NULL);

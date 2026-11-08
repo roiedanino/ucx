@@ -68,6 +68,7 @@ typedef __be32 uct_rc_mlx5_tx_token_t;
 typedef __be32 uct_rc_mlx5_rx_token_t;
 
 void uct_rc_mlx5_sgl_completion_marker(uct_completion_t *completion);
+void uct_rc_mlx5_sgl_completion(uct_rc_iface_send_op_t *op, const void *resp);
 
 static inline int
 uct_rc_mlx5_sgl_completion_is_adapter(const uct_completion_t *completion)
@@ -79,7 +80,7 @@ uct_rc_mlx5_sgl_completion_is_adapter(const uct_completion_t *completion)
 typedef struct uct_rc_mlx5_sgl_context uct_rc_mlx5_sgl_context_t;
 
 typedef struct uct_rc_mlx5_sgl_checkpoint {
-    uct_rc_iface_send_op_with_info_t op;
+    uct_rc_iface_send_op_t           op;
     uct_rc_mlx5_sgl_context_t        *context;
     unsigned                         index;
 } uct_rc_mlx5_sgl_checkpoint_t;

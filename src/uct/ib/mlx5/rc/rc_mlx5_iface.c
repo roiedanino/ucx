@@ -20,7 +20,6 @@
 #include <ucs/profile/profile.h>
 
 #include "rc_mlx5.inl"
-#include <ucs/algorithm/crc.h>
 
 
 /**
@@ -170,7 +169,11 @@ static ucs_status_t uct_rc_mlx5_iface_query(uct_iface_h tl_iface, uct_iface_attr
         return status;
     }
 
-    ep_addr_len = uct_rc_mlx5_iface_get_ep_address_len(iface);
+    if (uct_rc_iface_flush_rkey_enabled(&iface->super)) {
+        ep_addr_len = sizeof(uct_rc_mlx5_ep_ext_address_t) + sizeof(uint16_t);
+    } else {
+        ep_addr_len = sizeof(uct_rc_mlx5_ep_address_t);
+    }
 
     uct_rc_mlx5_iface_common_query(&rc_iface->super, iface_attr, max_am_inline,
                                    UCT_RC_MLX5_TM_EAGER_ZCOPY_MAX_IOV(0));
@@ -1003,7 +1006,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                                                         uct_rc_mlx5_iface_config_t);
     uct_ib_mlx5_md_t *md               = ucs_derived_of(tl_md, uct_ib_mlx5_md_t);
     uct_ib_iface_init_attr_t init_attr = {};
-    const uct_ib_mlx5_ext_ops_t *provider;
     const uct_rc_mlx5_ext_ops_t *ext_ops;
     ucs_status_t status;
     int required;
@@ -1032,23 +1034,9 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
         return status;
     }
 
-    provider = uct_ib_mlx5_ext_get_rc_provider();
-    ext_ops  = (provider == NULL) ? NULL : provider->rc_ops;
+    ext_ops  = uct_ib_mlx5_ext_get_rc_provider();
     required = (ext_ops != NULL) &&
                (ext_ops->flags & UCT_RC_MLX5_EXT_FLAG_REQUIRE_IFACE_ATTACH);
-    if ((ext_ops != NULL) &&
-        (ext_ops->ep_addr_len > UINT8_MAX -
-         sizeof(uct_rc_mlx5_ep_ext_address_t) - sizeof(uint16_t) -
-         sizeof(uct_rc_mlx5_ep_ext_wire_hdr_t))) {
-        ucs_error("rc mlx5 provider address exceeds the UCP address limit");
-        return UCS_ERR_INVALID_PARAM;
-    }
-
-    if ((ext_ops != NULL) && (ext_ops->ep_addr_len != 0) &&
-        ((ext_ops->ep_pack_addr == NULL) || (ext_ops->ep_connect == NULL))) {
-        ucs_error("rc mlx5 provider address requires pack and connect hooks");
-        return UCS_ERR_INVALID_PARAM;
-    }
 
     UCS_CLASS_CALL_SUPER_INIT(uct_rc_mlx5_iface_common_t,
                               &uct_rc_mlx5_iface_tl_ops, &uct_rc_mlx5_iface_ops,
@@ -1056,8 +1044,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                               &config->rc_mlx5_common, &init_attr);
 
     self->super.ext_ops = ext_ops;
-    self->super.ext_provider_id = (provider == NULL) ? 0 :
-            ucs_crc32(0, provider->name, strlen(provider->name));
 
     status = uct_rc_init_fc_thresh(&config->super, &self->super.super);
     if (status != UCS_OK) {
@@ -1072,7 +1058,6 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
         if (status != UCS_OK) {
             self->super.ext_ops = NULL;
             self->super.ext_ctx = NULL;
-            self->super.ext_provider_id = 0;
             if (required) {
                 return status;
             }

@@ -2054,35 +2054,14 @@ ucs_status_t uct_rc_mlx5_ep_get_address(uct_ep_h tl_ep, uct_ep_addr_t *addr)
     }
 
     ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
-    if (uct_rc_iface_flush_rkey_enabled(&iface->super) ||
-        (iface->ext_ops != NULL)) {
-        ext_addr->flags = 0;
-        ptr             = ext_addr + 1;
-    }
-
     if (uct_rc_iface_flush_rkey_enabled(&iface->super)) {
-        ext_addr->flags                    |= UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY;
+        ext_addr->flags = UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY |
+                           UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_PROBE;
+        ptr                                 = ext_addr + 1;
         *ucs_serialize_next(&ptr, uint16_t) = md->flush_rkey >> 16;
         if (!md->config.enable_indirect_atomic) {
             ext_addr->flags |= UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET;
         }
-    }
-
-    if (iface->ext_ops != NULL) {
-        uct_rc_mlx5_ep_ext_wire_hdr_t *hdr =
-                ucs_serialize_next(&ptr, uct_rc_mlx5_ep_ext_wire_hdr_t);
-
-        ext_addr->flags |= UCT_RC_MLX5_EP_ADDR_FLAG_EXT;
-        hdr->provider_id = htonl(iface->ext_provider_id);
-        hdr->payload_len = htons(iface->ext_ops->ep_addr_len);
-        hdr->api_version = UCT_RC_MLX5_EP_EXT_WIRE_VERSION;
-        hdr->reserved    = 0;
-        if (iface->ext_ops->ep_pack_addr != NULL) {
-            return iface->ext_ops->ep_pack_addr(ep->super.ext_ctx, ptr,
-                                                iface->ext_ops->ep_addr_len);
-        }
-
-        memset(ptr, 0, iface->ext_ops->ep_addr_len);
     }
 
     return UCS_OK;
@@ -2199,14 +2178,21 @@ uct_rc_mlx5_ep_connect_to_ep_v2(uct_ep_h tl_ep,
     struct ibv_ah_attr ah_attr;
     enum ibv_mtu path_mtu;
     const void *ptr;
-    size_t remaining;
     uint32_t flush_rkey_hi;
     ucs_status_t status;
 
-    addr_length = UCS_PARAM_VALUE(
-            UCT_EP_CONNECT_TO_EP_PARAM_FIELD, params, ep_addr_length,
-            EP_ADDR_LENGTH, uct_rc_mlx5_iface_get_ep_address_len(iface));
+    ep->super.flush_probe = 0;
+    addr_length = UCS_PARAM_VALUE(UCT_EP_CONNECT_TO_EP_PARAM_FIELD, params,
+                                  ep_addr_length, EP_ADDR_LENGTH,
+                                  sizeof(uct_rc_mlx5_ep_address_t));
     if (addr_length < sizeof(*rc_addr)) {
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
+    if ((addr_length > sizeof(*rc_addr)) &&
+        (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY) &&
+        (addr_length < sizeof(*ext_addr) + sizeof(uint16_t))) {
         return UCS_ERR_INVALID_PARAM;
     }
 
@@ -2219,75 +2205,6 @@ uct_rc_mlx5_ep_connect_to_ep_v2(uct_ep_h tl_ep,
 
     ucs_assert(path_mtu != UCT_IB_ADDRESS_INVALID_PATH_MTU);
 
-    ep->super.super.atomic_mr_offset = uct_ib_md_atomic_offset(
-            rc_addr->atomic_mr_id);
-
-    /* Legacy connect has no remote length and requires symmetric providers. */
-    if (addr_length <= sizeof(uct_rc_mlx5_ep_address_t)) {
-        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
-        if (iface->ext_ops != NULL) {
-            return UCS_ERR_UNREACHABLE;
-        }
-
-        goto out_connected;
-    }
-
-    ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
-    ptr       = ext_addr + 1;
-    remaining = addr_length - sizeof(*ext_addr);
-    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY) {
-        if (remaining < sizeof(uint16_t)) {
-            return UCS_ERR_INVALID_PARAM;
-        }
-
-        flush_rkey_hi              = *ucs_serialize_next(&ptr, uint16_t);
-        remaining                 -= sizeof(uint16_t);
-        ep->super.super.flush_rkey = (flush_rkey_hi << 16) |
-                                     ((uint32_t)rc_addr->atomic_mr_id << 8);
-    } else {
-        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
-    }
-
-    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET) {
-        /* override super.super.atomic_mr_offset that was set previously */
-        ep->super.super.atomic_mr_offset = 0;
-    }
-
-    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_EXT) {
-        const uct_rc_mlx5_ep_ext_wire_hdr_t *hdr;
-        size_t payload_len;
-
-        if (remaining < sizeof(*hdr)) {
-            return UCS_ERR_INVALID_PARAM;
-        }
-
-        hdr          = ucs_serialize_next(&ptr,
-                                          uct_rc_mlx5_ep_ext_wire_hdr_t);
-        remaining   -= sizeof(*hdr);
-        payload_len  = ntohs(hdr->payload_len);
-        if ((iface->ext_ops == NULL) ||
-            (hdr->api_version != UCT_RC_MLX5_EP_EXT_WIRE_VERSION) ||
-            (ntohl(hdr->provider_id) !=
-             iface->ext_provider_id) ||
-            (payload_len != iface->ext_ops->ep_addr_len) ||
-            (remaining < payload_len)) {
-            ucs_error("rc_mlx5 extension address mismatch");
-            return UCS_ERR_UNREACHABLE;
-        }
-
-        if (iface->ext_ops->ep_connect != NULL) {
-            status = iface->ext_ops->ep_connect(tl_ep, ep->super.ext_ctx, ptr,
-                                                payload_len);
-            if (status != UCS_OK) {
-                return status;
-            }
-        }
-    } else if (iface->ext_ops != NULL) {
-        ucs_error("rc_mlx5 extension address is missing");
-        return UCS_ERR_UNREACHABLE;
-    }
-
-out_connected:
     if (UCT_RC_MLX5_TM_ENABLED(iface)) {
         /* For HW TM we need 2 QPs, one of which will be used by the device for
          * RNDV offload (for issuing RDMA reads and sending RNDV ACK). No WQEs
@@ -2315,7 +2232,33 @@ out_connected:
 
     uct_rc_mlx5_txwq_set_path_mtu(&ep->super.tx.wq, path_mtu);
 
-    ep->super.super.flags |= UCT_RC_EP_FLAG_CONNECTED;
+    ep->super.super.atomic_mr_offset = uct_ib_md_atomic_offset(
+            rc_addr->atomic_mr_id);
+    ep->super.super.flags           |= UCT_RC_EP_FLAG_CONNECTED;
+
+    if (addr_length <= sizeof(uct_rc_mlx5_ep_address_t)) {
+        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
+        return UCS_OK;
+    }
+
+    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY) {
+        ptr                        = ext_addr + 1;
+        flush_rkey_hi              = *ucs_serialize_next(&ptr, uint16_t);
+        ep->super.super.flush_rkey = (flush_rkey_hi << 16) |
+                                     ((uint32_t)rc_addr->atomic_mr_id << 8);
+    } else {
+        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
+    }
+
+    ep->super.flush_probe =
+            (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_PROBE) &&
+            uct_ib_md_is_flush_rkey_valid(ep->super.super.flush_rkey);
+
+    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET) {
+        /* override super.super.atomic_mr_offset that was set previously */
+        ep->super.super.atomic_mr_offset = 0;
+    }
+
     return UCS_OK;
 }
 
@@ -2510,6 +2453,7 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_base_ep_t, const uct_ep_params_t *params)
     UCS_CLASS_CALL_SUPER_INIT(uct_rc_ep_t, &iface->super,
                               self->tx.wq.super.qp_num, params);
     self->err_handler_inprogress = 0;
+    self->flush_probe            = 0;
     self->ext_ctx                = NULL;
 
     if (self->tx.wq.super.type == UCT_IB_MLX5_OBJ_TYPE_VERBS) {

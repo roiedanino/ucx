@@ -348,7 +348,6 @@ typedef struct uct_rc_mlx5_iface_common {
     uct_rc_iface_t                     super;
     const struct uct_rc_mlx5_ext_ops   *ext_ops;
     void                              *ext_ctx;
-    uint32_t                           ext_provider_id;
     struct {
         ucs_mpool_t                    atomic_desc_mp;
         uct_ib_mlx5_mmio_mode_t        mmio_mode;

@@ -2172,10 +2172,18 @@ UCS_TEST_P(test_rc_sgl_completion, failed_post_preserves_adapter)
     auto iface = ucs_derived_of(m_entity->iface(), uct_rc_mlx5_iface_common_t);
     const uint16_t pi = ep()->super.tx.wq.sw_pi;
     const int cq_available = iface->super.tx.cq_available;
+    const int zip = iface->cq[UCT_IB_DIR_TX].zip;
     uct_rc_mlx5_sgl_completion_t saved;
     ucs_status_t status;
 
     memcpy(&saved, m_completion.get(), sizeof(saved));
+
+    iface->cq[UCT_IB_DIR_TX].zip = 1;
+    EXPECT_EQ(UCS_ERR_UNSUPPORTED, uct_rc_mlx5_sgl_completion_init(
+            m_entity->ep(0), element_count, final_cb, this, m_completion.get()));
+    status = post();
+    iface->cq[UCT_IB_DIR_TX].zip = zip;
+    ASSERT_EQ(UCS_ERR_UNSUPPORTED, status);
 
     m_lengths[1] = 0;
     ASSERT_EQ(UCS_ERR_INVALID_PARAM, post());

@@ -1099,7 +1099,7 @@ ucs_status_t uct_rc_mlx5_sgl_completion_init(
     }
 
     iface = ucs_derived_of(ep->iface, uct_rc_mlx5_iface_common_t);
-    if (!iface->tx.cqe_timestamp) {
+    if (!uct_rc_mlx5_iface_has_cqe_timestamps(iface)) {
         return UCS_ERR_UNSUPPORTED;
     }
 

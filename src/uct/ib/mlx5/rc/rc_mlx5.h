@@ -77,14 +77,6 @@ uct_rc_mlx5_sgl_completion_is_adapter(const uct_completion_t *completion)
            (completion->func == uct_rc_mlx5_sgl_completion_marker);
 }
 
-typedef struct uct_rc_mlx5_sgl_context uct_rc_mlx5_sgl_context_t;
-
-typedef struct uct_rc_mlx5_sgl_checkpoint {
-    uct_rc_iface_send_op_t           op;
-    uct_rc_mlx5_sgl_context_t        *context;
-    unsigned                         index;
-} uct_rc_mlx5_sgl_checkpoint_t;
-
 
 /**
  * Generic RC remote endpoint with HW TM support

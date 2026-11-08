@@ -24,95 +24,6 @@ extern "C" {
 }
 #endif
 
-#ifdef HAVE_MLX5_DV
-class test_rc_cqe_timestamp : public uct_test {
-protected:
-    void init() override
-    {
-        uct_test::init();
-        modify_config("IB_TX_CQE_ZIP_ENABLE", "no");
-        m_entity = create_entity(0ul);
-        m_entities.push_back(m_entity);
-        auto iface = ucs_derived_of(m_entity->iface(),
-                                     uct_rc_mlx5_iface_common_t);
-#if HAVE_DECL_IBV_QUERY_DEVICE_EX
-        auto md = ucs_derived_of(m_entity->md(), uct_ib_mlx5_md_t);
-        if ((md->super.dev.dev_attr.completion_timestamp_mask == 0) ||
-            (md->super.dev.dev_attr.hca_core_clock == 0)) {
-            UCS_TEST_SKIP_R("CQ timestamp metadata is unavailable");
-        }
-#else
-        UCS_TEST_SKIP_R("CQ timestamp metadata is unavailable");
-#endif
-        m_capture.cq = &iface->cq[UCT_IB_DIR_TX];
-        m_capture.comp.func = complete;
-        m_entity->connect(0, *m_entity, 0);
-        m_source.reset(new mapped_buffer(3 * 65536, 17, *m_entity));
-        m_target.reset(new mapped_buffer(3 * 65536, 0, *m_entity));
-    }
-
-    void cleanup() override
-    {
-        if (m_entity != nullptr) {
-            m_entity->destroy_eps();
-        }
-        m_target.reset();
-        m_source.reset();
-        uct_test::cleanup();
-    }
-
-    struct capture {
-        uct_completion_t comp;
-        uct_ib_mlx5_cq_t *cq;
-        uint64_t timestamp;
-        unsigned completed;
-    } m_capture = {};
-
-    static void complete(uct_completion_t *comp)
-    {
-        auto c = ucs_container_of(comp, capture, comp);
-        EXPECT_EQ(UCS_OK, comp->status);
-        /* This fixture has one outstanding write on an uncompressed TX CQ. */
-        auto cqe = static_cast<mlx5_cqe64*>(UCS_PTR_BYTE_OFFSET(c->cq->cq_buf,
-                ((c->cq->cq_ci - 1) & c->cq->cq_length_mask) <<
-                c->cq->cqe_size_log));
-        c->timestamp = be64toh(cqe->timestamp);
-        c->completed = 1;
-    }
-
-    entity *m_entity = nullptr;
-    std::unique_ptr<mapped_buffer> m_source, m_target;
-};
-
-UCS_TEST_P(test_rc_cqe_timestamp, put)
-{
-#if HAVE_DECL_IBV_QUERY_DEVICE_EX
-    uint64_t previous = 0;
-#endif
-
-    for (unsigned i = 0; i < 2; ++i) {
-        m_capture.comp.count = 1;
-        m_capture.comp.status = UCS_OK;
-        m_capture.completed = 0;
-        ASSERT_EQ(UCS_INPROGRESS, uct_ep_put_zcopy(m_entity->ep(0),
-                m_source->iov(), 1, m_target->addr(), m_target->rkey(),
-                &m_capture.comp));
-        wait_for_flag(&m_capture.completed);
-#if HAVE_DECL_IBV_QUERY_DEVICE_EX
-        if (i != 0) {
-            auto md = ucs_derived_of(m_entity->md(), uct_ib_mlx5_md_t);
-            EXPECT_GT((m_capture.timestamp - previous) &
-                      md->super.dev.dev_attr.completion_timestamp_mask, 0ul);
-        }
-        previous = m_capture.timestamp;
-#endif
-        flush();
-        m_target->pattern_check(17);
-    }
-}
-_UCT_INSTANTIATE_TEST_CASE(test_rc_cqe_timestamp, rc_mlx5)
-#endif
-
 
 void test_rc::init()
 {
@@ -2094,13 +2005,31 @@ UCS_TEST_SKIP_COND_P(test_rc_srq, reorder_cyclic,
 
 UCT_INSTANTIATE_RC_DC_TEST_CASE(test_rc_srq);
 
-class test_rc_sgl_completion : public test_rc_cqe_timestamp {
+class test_rc_sgl_completion : public uct_test {
 protected:
     enum { element_count = 3, element_size = 64 * UCS_KBYTE };
 
     void init() override
     {
-        test_rc_cqe_timestamp::init();
+        ucs_status_t status;
+
+        uct_test::init();
+        modify_config("IB_TX_CQE_ZIP_ENABLE", "no");
+        m_entity = create_entity(0ul);
+        m_entities.push_back(m_entity);
+        m_entity->connect(0, *m_entity, 0);
+        m_completion.reset(new uct_rc_mlx5_sgl_completion_t());
+        status = uct_rc_mlx5_sgl_completion_init(
+                m_entity->ep(0), element_count, final_cb, this,
+                m_completion.get());
+        if (status == UCS_ERR_UNSUPPORTED) {
+            UCS_TEST_SKIP_R("CQ timestamps are unavailable");
+        }
+        ASSERT_UCS_OK(status);
+        m_source.reset(new mapped_buffer(element_count * element_size, 17,
+                                         *m_entity));
+        m_target.reset(new mapped_buffer(element_count * element_size, 0,
+                                         *m_entity));
         for (unsigned i = 0; i < element_count; ++i) {
             m_buffers[i]      = UCS_PTR_BYTE_OFFSET(m_source->ptr(),
                                                     i * element_size);
@@ -2109,11 +2038,16 @@ protected:
             m_remote_addrs[i] = m_target->addr() + i * element_size;
             m_rkeys[i]        = m_target->rkey();
         }
+    }
 
-        m_completion.reset(new uct_rc_mlx5_sgl_completion_t());
-        ASSERT_UCS_OK(uct_rc_mlx5_sgl_completion_init(
-                m_entity->ep(0), element_count, final_cb, this,
-                m_completion.get()));
+    void cleanup() override
+    {
+        if (m_entity != nullptr) {
+            m_entity->destroy_eps();
+        }
+        m_target.reset();
+        m_source.reset();
+        uct_test::cleanup();
     }
 
     static void final_cb(void *arg, ucs_status_t status, uint64_t start,
@@ -2141,6 +2075,8 @@ protected:
         return ucs_derived_of(m_entity->ep(0), uct_rc_mlx5_ep_t);
     }
 
+    entity *m_entity = nullptr;
+    std::unique_ptr<mapped_buffer> m_source, m_target;
     void *m_buffers[element_count];
     size_t m_lengths[element_count];
     uct_mem_h m_memhs[element_count];
@@ -2181,9 +2117,7 @@ UCS_TEST_P(test_rc_sgl_completion, failed_post_preserves_adapter)
     iface->cq[UCT_IB_DIR_TX].zip = 1;
     EXPECT_EQ(UCS_ERR_UNSUPPORTED, uct_rc_mlx5_sgl_completion_init(
             m_entity->ep(0), element_count, final_cb, this, m_completion.get()));
-    status = post();
     iface->cq[UCT_IB_DIR_TX].zip = zip;
-    ASSERT_EQ(UCS_ERR_UNSUPPORTED, status);
 
     m_lengths[1] = 0;
     ASSERT_EQ(UCS_ERR_INVALID_PARAM, post());

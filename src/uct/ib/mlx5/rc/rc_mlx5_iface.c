@@ -1087,6 +1087,9 @@ ucs_status_t uct_rc_mlx5_sgl_completion_init(
 {
     const uct_base_iface_t *base;
     uct_rc_mlx5_iface_common_t *iface;
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+    uct_ib_device_t *dev;
+#endif
 
     if ((ep == NULL) || (completion == NULL) || (count < 2) ||
         (count > UINT16_MAX) || (callback == NULL)) {
@@ -1099,9 +1102,16 @@ ucs_status_t uct_rc_mlx5_sgl_completion_init(
     }
 
     iface = ucs_derived_of(ep->iface, uct_rc_mlx5_iface_common_t);
-    if (!uct_rc_mlx5_iface_has_cqe_timestamps(iface)) {
+#if HAVE_DECL_IBV_QUERY_DEVICE_EX
+    dev = uct_ib_iface_device(&iface->super.super);
+    if (iface->cq[UCT_IB_DIR_TX].zip ||
+        (dev->dev_attr.completion_timestamp_mask == 0) ||
+        (dev->dev_attr.hca_core_clock == 0)) {
         return UCS_ERR_UNSUPPORTED;
     }
+#else
+    return UCS_ERR_UNSUPPORTED;
+#endif
 
     if (count > uct_rc_mlx5_base_sgl_zcopy_max_count(iface)) {
         return UCS_ERR_INVALID_PARAM;

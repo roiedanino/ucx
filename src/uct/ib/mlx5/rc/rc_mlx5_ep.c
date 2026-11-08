@@ -74,11 +74,25 @@ uct_rc_mlx5_ep_query_tx_token(uct_rc_mlx5_base_ep_t *ep, uct_ep_attr_t *ep_attr)
 
 ucs_status_t uct_rc_mlx5_base_ep_query(uct_ep_h tl_ep, uct_ep_attr_t *ep_attr)
 {
+    UCT_RC_MLX5_BASE_EP_DECL(tl_ep, iface, ep);
+    uct_ep_attr_t result = *ep_attr;
     uct_ib_mlx5_md_t *md;
+    ucs_status_t status;
 
     if (ep_attr->field_mask & (UCT_EP_ATTR_FIELD_LOCAL_SOCKADDR |
                                UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR)) {
         return UCS_ERR_UNSUPPORTED;
+    }
+
+    if (ep_attr->field_mask & UCT_EP_ATTR_FIELD_BANDWIDTH) {
+        if ((iface->ext_ops == NULL) || (iface->ext_ops->ep_query == NULL)) {
+            return UCS_ERR_UNSUPPORTED;
+        }
+
+        status = iface->ext_ops->ep_query(ep->ext_ctx, &result);
+        if (status != UCS_OK) {
+            return status;
+        }
     }
 
     if (ep_attr->field_mask & UCT_EP_ATTR_FIELD_TX_TOKEN) {
@@ -87,8 +101,14 @@ ucs_status_t uct_rc_mlx5_base_ep_query(uct_ep_h tl_ep, uct_ep_attr_t *ep_attr)
             return UCS_ERR_UNSUPPORTED;
         }
 
-        return uct_rc_mlx5_ep_query_tx_token(
-                ucs_derived_of(tl_ep, uct_rc_mlx5_base_ep_t), ep_attr);
+        status = uct_rc_mlx5_ep_query_tx_token(ep, &result);
+        if (status != UCS_OK) {
+            return status;
+        }
+    }
+
+    if (ep_attr->field_mask & UCT_EP_ATTR_FIELD_BANDWIDTH) {
+        ep_attr->bandwidth = result.bandwidth;
     }
 
     return UCS_OK;
@@ -1031,6 +1051,21 @@ uct_rc_mlx5_ep_is_flush_remote_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
     return (op != NULL) && uct_rc_mlx5_send_op_is_flush_remote(op);
 }
 
+static int
+uct_rc_mlx5_ep_is_cancel_on_purge_wqe(uct_rc_mlx5_base_ep_t *ep, uint16_t pi)
+{
+    uct_rc_iface_send_op_t *op;
+
+    if (ucs_queue_is_empty(&ep->super.txqp.outstanding)) {
+        return 0;
+    }
+    op = ucs_queue_head_elem_non_empty(&ep->super.txqp.outstanding,
+                                       uct_rc_iface_send_op_t, queue);
+    return (op->flags & UCT_RC_IFACE_SEND_OP_FLAG_CANCEL_ON_PURGE) &&
+           ((uint16_t)(pi - op->wqe_start_pi) <=
+            (uint16_t)(op->sn - op->wqe_start_pi));
+}
+
 static void uct_rc_mlx5_op_callback_data_fill_iov(
         const uct_ib_mlx5_txwq_t *txwq, const struct mlx5_wqe_data_seg *dptr,
         size_t num_dseg, uct_rc_mlx5_op_callback_data_t *callback_data)
@@ -1795,6 +1830,15 @@ uct_rc_mlx5_ep_outstanding_complete_send_ops(uct_rc_iface_t *iface,
 
     ucs_queue_for_each_extract(op, &ep->super.txqp.outstanding, queue,
                                UCS_CIRCULAR_COMPARE16(op->sn, <=, pi)) {
+        if (op->flags & UCT_RC_IFACE_SEND_OP_FLAG_CANCEL_ON_PURGE) {
+            uct_invoke_completion(op->user_comp, UCS_ERR_CANCELED);
+            op->flags &= ~(UCT_RC_IFACE_SEND_OP_FLAG_CANCEL_ON_PURGE |
+                           UCT_RC_IFACE_SEND_OP_FLAG_INUSE |
+                           UCT_RC_IFACE_SEND_OP_FLAG_ZCOPY);
+            uct_rc_iface_put_send_op(op);
+            continue;
+        }
+
         ucs_assertv_always(uct_rc_mlx5_send_op_is_bcopy(op) ||
                                    uct_rc_mlx5_send_op_is_short_dm(op) ||
                                    uct_rc_mlx5_send_op_is_put_zcopy(op) ||
@@ -1939,7 +1983,7 @@ ucs_status_t uct_rc_mlx5_ep_outstanding_purge(
                          uct_rc_mlx5_ep_is_flush_remote_wqe(ep, pi));
         }
 
-        if (!delivered) {
+        if (!delivered && !uct_rc_mlx5_ep_is_cancel_on_purge_wqe(ep, pi)) {
             status = uct_rc_mlx5_op_info_fill(iface, ep, txwq, pi, ctrl,
                                               wqe_size, &callback_data, &info);
             if (status == UCS_OK) {
@@ -2010,13 +2054,35 @@ ucs_status_t uct_rc_mlx5_ep_get_address(uct_ep_h tl_ep, uct_ep_addr_t *addr)
     }
 
     ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
+    if (uct_rc_iface_flush_rkey_enabled(&iface->super) ||
+        (iface->ext_ops != NULL)) {
+        ext_addr->flags = 0;
+        ptr             = ext_addr + 1;
+    }
+
     if (uct_rc_iface_flush_rkey_enabled(&iface->super)) {
-        ext_addr->flags                     = UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY;
-        ptr                                 = ext_addr + 1;
+        ext_addr->flags                    |= UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY;
         *ucs_serialize_next(&ptr, uint16_t) = md->flush_rkey >> 16;
         if (!md->config.enable_indirect_atomic) {
             ext_addr->flags |= UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET;
         }
+    }
+
+    if (iface->ext_ops != NULL) {
+        uct_rc_mlx5_ep_ext_wire_hdr_t *hdr =
+                ucs_serialize_next(&ptr, uct_rc_mlx5_ep_ext_wire_hdr_t);
+
+        ext_addr->flags |= UCT_RC_MLX5_EP_ADDR_FLAG_EXT;
+        hdr->provider_id = htonl(iface->ext_provider_id);
+        hdr->payload_len = htons(iface->ext_ops->ep_addr_len);
+        hdr->api_version = UCT_RC_MLX5_EP_EXT_WIRE_VERSION;
+        hdr->reserved    = 0;
+        if (iface->ext_ops->ep_pack_addr != NULL) {
+            return iface->ext_ops->ep_pack_addr(ep->super.ext_ctx, ptr,
+                                                iface->ext_ops->ep_addr_len);
+        }
+
+        memset(ptr, 0, iface->ext_ops->ep_addr_len);
     }
 
     return UCS_OK;
@@ -2133,8 +2199,16 @@ uct_rc_mlx5_ep_connect_to_ep_v2(uct_ep_h tl_ep,
     struct ibv_ah_attr ah_attr;
     enum ibv_mtu path_mtu;
     const void *ptr;
+    size_t remaining;
     uint32_t flush_rkey_hi;
     ucs_status_t status;
+
+    addr_length = UCS_PARAM_VALUE(
+            UCT_EP_CONNECT_TO_EP_PARAM_FIELD, params, ep_addr_length,
+            EP_ADDR_LENGTH, uct_rc_mlx5_iface_get_ep_address_len(iface));
+    if (addr_length < sizeof(*rc_addr)) {
+        return UCS_ERR_INVALID_PARAM;
+    }
 
     status = uct_ib_iface_fill_ah_attr_from_addr(&iface->super.super, ib_addr,
                                                  ep->super.super.path_index,
@@ -2145,6 +2219,75 @@ uct_rc_mlx5_ep_connect_to_ep_v2(uct_ep_h tl_ep,
 
     ucs_assert(path_mtu != UCT_IB_ADDRESS_INVALID_PATH_MTU);
 
+    ep->super.super.atomic_mr_offset = uct_ib_md_atomic_offset(
+            rc_addr->atomic_mr_id);
+
+    /* Legacy connect has no remote length and requires symmetric providers. */
+    if (addr_length <= sizeof(uct_rc_mlx5_ep_address_t)) {
+        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
+        if (iface->ext_ops != NULL) {
+            return UCS_ERR_UNREACHABLE;
+        }
+
+        goto out_connected;
+    }
+
+    ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
+    ptr       = ext_addr + 1;
+    remaining = addr_length - sizeof(*ext_addr);
+    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY) {
+        if (remaining < sizeof(uint16_t)) {
+            return UCS_ERR_INVALID_PARAM;
+        }
+
+        flush_rkey_hi              = *ucs_serialize_next(&ptr, uint16_t);
+        remaining                 -= sizeof(uint16_t);
+        ep->super.super.flush_rkey = (flush_rkey_hi << 16) |
+                                     ((uint32_t)rc_addr->atomic_mr_id << 8);
+    } else {
+        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
+    }
+
+    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET) {
+        /* override super.super.atomic_mr_offset that was set previously */
+        ep->super.super.atomic_mr_offset = 0;
+    }
+
+    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_EXT) {
+        const uct_rc_mlx5_ep_ext_wire_hdr_t *hdr;
+        size_t payload_len;
+
+        if (remaining < sizeof(*hdr)) {
+            return UCS_ERR_INVALID_PARAM;
+        }
+
+        hdr          = ucs_serialize_next(&ptr,
+                                          uct_rc_mlx5_ep_ext_wire_hdr_t);
+        remaining   -= sizeof(*hdr);
+        payload_len  = ntohs(hdr->payload_len);
+        if ((iface->ext_ops == NULL) ||
+            (hdr->api_version != UCT_RC_MLX5_EP_EXT_WIRE_VERSION) ||
+            (ntohl(hdr->provider_id) !=
+             iface->ext_provider_id) ||
+            (payload_len != iface->ext_ops->ep_addr_len) ||
+            (remaining < payload_len)) {
+            ucs_error("rc_mlx5 extension address mismatch");
+            return UCS_ERR_UNREACHABLE;
+        }
+
+        if (iface->ext_ops->ep_connect != NULL) {
+            status = iface->ext_ops->ep_connect(tl_ep, ep->super.ext_ctx, ptr,
+                                                payload_len);
+            if (status != UCS_OK) {
+                return status;
+            }
+        }
+    } else if (iface->ext_ops != NULL) {
+        ucs_error("rc_mlx5 extension address is missing");
+        return UCS_ERR_UNREACHABLE;
+    }
+
+out_connected:
     if (UCT_RC_MLX5_TM_ENABLED(iface)) {
         /* For HW TM we need 2 QPs, one of which will be used by the device for
          * RNDV offload (for issuing RDMA reads and sending RNDV ACK). No WQEs
@@ -2172,33 +2315,7 @@ uct_rc_mlx5_ep_connect_to_ep_v2(uct_ep_h tl_ep,
 
     uct_rc_mlx5_txwq_set_path_mtu(&ep->super.tx.wq, path_mtu);
 
-    ep->super.super.atomic_mr_offset = uct_ib_md_atomic_offset(
-            rc_addr->atomic_mr_id);
-    ep->super.super.flags           |= UCT_RC_EP_FLAG_CONNECTED;
-
-    addr_length = UCS_PARAM_VALUE(UCT_EP_CONNECT_TO_EP_PARAM_FIELD, params,
-                                  ep_addr_length, EP_ADDR_LENGTH,
-                                  sizeof(uct_rc_mlx5_ep_address_t));
-    if (addr_length <= sizeof(uct_rc_mlx5_ep_address_t)) {
-        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
-        return UCS_OK;
-    }
-
-    ext_addr = ucs_derived_of(rc_addr, uct_rc_mlx5_ep_ext_address_t);
-    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_FLUSH_RKEY) {
-        ptr                        = ext_addr + 1;
-        flush_rkey_hi              = *ucs_serialize_next(&ptr, uint16_t);
-        ep->super.super.flush_rkey = (flush_rkey_hi << 16) |
-                                     ((uint32_t)rc_addr->atomic_mr_id << 8);
-    } else {
-        ep->super.super.flush_rkey = UCT_IB_MD_INVALID_FLUSH_RKEY;
-    }
-
-    if (ext_addr->flags & UCT_RC_MLX5_EP_ADDR_FLAG_NO_ATOMIC_OFFSET) {
-        /* override super.super.atomic_mr_offset that was set previously */
-        ep->super.super.atomic_mr_offset = 0;
-    }
-
+    ep->super.super.flags |= UCT_RC_EP_FLAG_CONNECTED;
     return UCS_OK;
 }
 
@@ -2393,6 +2510,7 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_base_ep_t, const uct_ep_params_t *params)
     UCS_CLASS_CALL_SUPER_INIT(uct_rc_ep_t, &iface->super,
                               self->tx.wq.super.qp_num, params);
     self->err_handler_inprogress = 0;
+    self->ext_ctx                = NULL;
 
     if (self->tx.wq.super.type == UCT_IB_MLX5_OBJ_TYPE_VERBS) {
         status = uct_rc_iface_qp_init(&iface->super,
@@ -2441,6 +2559,41 @@ static UCS_CLASS_CLEANUP_FUNC(uct_rc_mlx5_base_ep_t)
 
 UCS_CLASS_DEFINE(uct_rc_mlx5_base_ep_t, uct_rc_ep_t);
 
+static void uct_rc_mlx5_ep_cleanup_qps(uct_rc_mlx5_ep_t *self)
+{
+    uct_rc_mlx5_iface_common_t *iface = ucs_derived_of(
+            self->super.super.super.super.iface, uct_rc_mlx5_iface_common_t);
+    uct_rc_mlx5_iface_qp_cleanup_ctx_t *cleanup_ctx;
+    uint16_t unreleased_cq_credits, unpolled_cqes, cq_credits;
+
+    cleanup_ctx = ucs_malloc(sizeof(*cleanup_ctx), "mlx5_qp_cleanup_ctx");
+    ucs_assert_always(cleanup_ctx != NULL);
+    cleanup_ctx->qp    = self->super.tx.wq.super;
+    cleanup_ctx->tm_qp = self->tm_qp;
+    cleanup_ctx->reg   = self->super.tx.wq.reg;
+
+#if IBV_HW_TM
+    if (UCT_RC_MLX5_TM_ENABLED(iface)) {
+        uct_rc_iface_remove_qp(&iface->super, self->tm_qp.qp_num);
+    }
+#endif
+
+    ucs_assert(self->mp.free == 1);
+    (void)uct_ib_mlx5_modify_qp_state(&iface->super.super,
+                                      &self->super.tx.wq.super, IBV_QPS_ERR);
+
+    /* Keep one unreleased CQ credit per WQE for its error completion. */
+    unreleased_cq_credits = self->super.tx.wq.prev_sw_pi -
+                            self->super.tx.wq.hw_ci;
+    unpolled_cqes = uct_ib_mlx5_txwq_num_posted_wqes(&self->super.tx.wq,
+                                                     unreleased_cq_credits);
+    ucs_assert(unreleased_cq_credits >= unpolled_cqes);
+    cq_credits = unreleased_cq_credits - unpolled_cqes;
+
+    uct_rc_ep_cleanup_qp(&self->super.super, &cleanup_ctx->super,
+                         self->super.tx.wq.super.qp_num, cq_credits);
+}
+
 UCS_CLASS_INIT_FUNC(uct_rc_mlx5_ep_t, const uct_ep_params_t *params)
 {
     uct_rc_mlx5_iface_common_t *iface =
@@ -2470,10 +2623,22 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_ep_t, const uct_ep_params_t *params)
     }
 
     self->mp.free = 1;
+    if ((iface->ext_ops != NULL) && (iface->ext_ops->ep_init != NULL)) {
+        status = iface->ext_ops->ep_init(
+                &self->super.super.super.super, iface->ext_ctx,
+                &self->super.ext_ctx);
+        if (status != UCS_OK) {
+            uct_rc_mlx5_ep_cleanup_qps(self);
+            return status;
+        }
+    }
+
     return UCS_OK;
 
 err_destroy_tm_qp:
-    uct_ib_mlx5_destroy_qp(md, &self->tm_qp);
+    if (UCT_RC_MLX5_TM_ENABLED(iface)) {
+        uct_ib_mlx5_destroy_qp(md, &self->tm_qp);
+    }
 err:
     return status;
 }
@@ -2482,38 +2647,15 @@ UCS_CLASS_CLEANUP_FUNC(uct_rc_mlx5_ep_t)
 {
     uct_rc_mlx5_iface_common_t *iface = ucs_derived_of(
             self->super.super.super.super.iface, uct_rc_mlx5_iface_common_t);
-    uct_rc_mlx5_iface_qp_cleanup_ctx_t *cleanup_ctx;
-    uint16_t unreleased_cq_credits, unpolled_cqes, cq_credits;
-
-    cleanup_ctx = ucs_malloc(sizeof(*cleanup_ctx), "mlx5_qp_cleanup_ctx");
-    ucs_assert_always(cleanup_ctx != NULL);
-    cleanup_ctx->qp    = self->super.tx.wq.super;
-    cleanup_ctx->tm_qp = self->tm_qp;
-    cleanup_ctx->reg   = self->super.tx.wq.reg;
 
     uct_rc_txqp_purge_outstanding(&iface->super, &self->super.super.txqp,
                                   UCS_ERR_CANCELED, self->super.tx.wq.sw_pi, 1);
-#if IBV_HW_TM
-    if (UCT_RC_MLX5_TM_ENABLED(iface)) {
-        uct_rc_iface_remove_qp(&iface->super, self->tm_qp.qp_num);
+    if ((iface->ext_ops != NULL) && (iface->ext_ops->ep_init != NULL) &&
+        (iface->ext_ops->ep_cleanup != NULL)) {
+        iface->ext_ops->ep_cleanup(self->super.ext_ctx);
+        self->super.ext_ctx = NULL;
     }
-#endif
-
-    ucs_assert(self->mp.free == 1);
-    (void)uct_ib_mlx5_modify_qp_state(&iface->super.super,
-                                      &self->super.tx.wq.super, IBV_QPS_ERR);
-
-    /* Keep only one unreleased CQ credit per WQE, so we will not have CQ
-       overflow. These CQ credits will be released by error CQE handler. */
-    unreleased_cq_credits = self->super.tx.wq.prev_sw_pi -
-                            self->super.tx.wq.hw_ci;
-    unpolled_cqes = uct_ib_mlx5_txwq_num_posted_wqes(&self->super.tx.wq,
-                                                     unreleased_cq_credits);
-    ucs_assert(unreleased_cq_credits >= unpolled_cqes);
-    cq_credits = unreleased_cq_credits - unpolled_cqes;
-
-    uct_rc_ep_cleanup_qp(&self->super.super, &cleanup_ctx->super,
-                         self->super.tx.wq.super.qp_num, cq_credits);
+    uct_rc_mlx5_ep_cleanup_qps(self);
 }
 
 UCS_CLASS_DEFINE(uct_rc_mlx5_ep_t, uct_rc_mlx5_base_ep_t);

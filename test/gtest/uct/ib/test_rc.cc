@@ -114,6 +114,46 @@ UCS_TEST_P(test_rc, tx_cq_moderation) {
     EXPECT_EQ(init_rsc, rc_ep(m_e1)->txqp.available);
 }
 
+UCS_TEST_SKIP_COND_P(test_rc, ep_event_handler,
+                     GetParam()->tl_name != "rc_mlx5")
+{
+    struct event_state {
+        uct_ep_h ep;
+        unsigned events, calls;
+    } first = {}, second = {};
+    uct_iface_set_ep_event_params_t params = {};
+    uct_base_iface_t *iface = ucs_derived_of(m_e1->iface(), uct_base_iface_t);
+
+    EXPECT_EQ(UCS_ERR_INVALID_PARAM,
+              uct_iface_set_ep_event_handler(m_e1->iface(), &params));
+    params.field_mask = UCT_IFACE_SET_EP_EVENT_PARAM_FIELD_CB |
+                        UCT_IFACE_SET_EP_EVENT_PARAM_FIELD_ARG;
+    params.cb = [](void *arg, uct_ep_h ep, unsigned events) {
+        auto *state = static_cast<event_state*>(arg);
+        state->ep     = ep;
+        state->events = events;
+        ++state->calls;
+    };
+    params.arg = &first;
+    ASSERT_UCS_OK(uct_iface_set_ep_event_handler(m_e1->iface(), &params));
+    uct_iface_invoke_ep_event(iface, m_e1->ep(0), UCT_EP_EVENT_PATH_SPEED_CHANGE);
+    EXPECT_EQ(m_e1->ep(0), first.ep);
+    EXPECT_EQ(unsigned(UCT_EP_EVENT_PATH_SPEED_CHANGE), first.events);
+    EXPECT_EQ(1u, first.calls);
+
+    params.arg = &second;
+    ASSERT_UCS_OK(uct_iface_set_ep_event_handler(m_e1->iface(), &params));
+    uct_iface_invoke_ep_event(iface, m_e1->ep(0), UCT_EP_EVENT_PATH_SPEED_CHANGE);
+    EXPECT_EQ(1u, first.calls);
+    EXPECT_EQ(1u, second.calls);
+
+    params.field_mask = UCT_IFACE_SET_EP_EVENT_PARAM_FIELD_CB;
+    params.cb         = nullptr;
+    ASSERT_UCS_OK(uct_iface_set_ep_event_handler(m_e1->iface(), &params));
+    uct_iface_invoke_ep_event(iface, m_e1->ep(0), UCT_EP_EVENT_PATH_SPEED_CHANGE);
+    EXPECT_EQ(1u, second.calls);
+}
+
 UCS_TEST_P(test_rc, flush_fc, "FLUSH_MODE?=fc") {
     send_am_messages(m_e1, 1, UCS_OK);
 

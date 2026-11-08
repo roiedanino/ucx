@@ -142,15 +142,6 @@ uct_ib_mlx5_create_cq(uct_ib_iface_t *iface, uct_ib_dir_t dir,
     struct ibv_cq_init_attr_ex cq_attr = {};
     struct mlx5dv_cq_init_attr dv_attr = {};
     struct ibv_cq *cq;
-#endif
-
-#if !HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE || \
-    !HAVE_DECL_IBV_WC_EX_WITH_COMPLETION_TIMESTAMP
-    if (init_attr->flags & UCT_IB_CQ_COMPLETION_TIMESTAMP) {
-        return UCS_ERR_UNSUPPORTED;
-    }
-#endif
-#if HAVE_DECL_MLX5DV_CQ_INIT_ATTR_MASK_CQE_SIZE
     uct_ib_fill_cq_attr(&cq_attr, init_attr, iface, preferred_cpu,
                         uct_ib_cq_size(iface, init_attr, dir));
 

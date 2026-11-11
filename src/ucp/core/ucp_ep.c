@@ -1729,10 +1729,11 @@ ucp_ep_config_key_find_am_lane(const ucp_ep_config_key_t *key)
 }
 
 static ucs_status_t
-ucp_ep_reconfig_internal(ucp_ep_h ep, ucp_lane_map_t failed_lanes)
+ucp_ep_reconfig_key(ucp_ep_h ep, ucp_lane_map_t failed_lanes,
+                      const ucp_ep_config_key_t *updated_key)
 {
     ucp_worker_h worker          = ep->worker;
-    ucp_ep_config_key_t cfg_key  = ucp_ep_config(ep)->key;
+    ucp_ep_config_key_t cfg_key  = *updated_key;
     const unsigned ep_init_flags = (ep->flags & UCP_EP_FLAG_INTERNAL) ?
                                     UCP_EP_INIT_FLAG_INTERNAL : 0;
     int port_speed_changed       = 0;
@@ -1745,14 +1746,23 @@ ucp_ep_reconfig_internal(ucp_ep_h ep, ucp_lane_map_t failed_lanes)
         if (failed_lanes & UCS_BIT(lane)) {
             ucs_assert(lane != UCP_NULL_LANE);
             cfg_key.lanes[lane].lane_types |= UCS_BIT(UCP_LANE_TYPE_FAILED);
+            cfg_key.lanes[lane].path_bandwidth.dedicated = 0;
+            cfg_key.lanes[lane].path_bandwidth.shared    = 0;
             if (cfg_key.am_lane == lane) {
                 cfg_key.am_lane = UCP_NULL_LANE;
             }
         }
 
+        if (cfg_key.lanes[lane].rsc_index == UCP_NULL_RESOURCE) {
+            continue;
+        }
+
         wiface = ucp_worker_iface(worker, cfg_key.lanes[lane].rsc_index);
-        port_speed_changed |= (cfg_key.lanes[lane].port_speed !=
-                               wiface->port_speed);
+        if (cfg_key.lanes[lane].port_speed != wiface->port_speed) {
+            cfg_key.lanes[lane].path_bandwidth.dedicated = 0;
+            cfg_key.lanes[lane].path_bandwidth.shared    = 0;
+            port_speed_changed                          = 1;
+        }
         cfg_key.lanes[lane].port_speed = wiface->port_speed;
     }
 
@@ -1786,6 +1796,12 @@ out:
     return UCS_OK;
 }
 
+static ucs_status_t
+ucp_ep_reconfig_internal(ucp_ep_h ep, ucp_lane_map_t failed_lanes)
+{
+    return ucp_ep_reconfig_key(ep, failed_lanes, &ucp_ep_config(ep)->key);
+}
+
 ucs_status_t ucp_ep_reconfig_clear_failed_lanes(ucp_ep_h ep,
                                                 ucp_lane_map_t lanes)
 {
@@ -1814,6 +1830,8 @@ ucs_status_t ucp_ep_reconfig_clear_failed_lanes(ucp_ep_h ep,
     ucs_for_each_bit(lane, lanes) {
         ucs_assert(lane < cfg_key.num_lanes);
         cfg_key.lanes[lane].lane_types &= ~UCS_BIT(UCP_LANE_TYPE_FAILED);
+        cfg_key.lanes[lane].path_bandwidth.dedicated = 0;
+        cfg_key.lanes[lane].path_bandwidth.shared    = 0;
     }
 
     cfg_key.am_lane = ucp_ep_config_key_find_am_lane(&cfg_key);
@@ -3882,6 +3900,10 @@ int ucp_ep_config_lane_is_equal(const ucp_ep_config_key_t *key1,
            (config_lane1->dst_sys_dev == config_lane2->dst_sys_dev) &&
            (config_lane1->lane_types == config_lane2->lane_types) &&
            (config_lane1->port_speed == config_lane2->port_speed) &&
+           (config_lane1->path_bandwidth.dedicated ==
+            config_lane2->path_bandwidth.dedicated) &&
+           (config_lane1->path_bandwidth.shared ==
+            config_lane2->path_bandwidth.shared) &&
            (config_lane1->seg_size == config_lane2->seg_size);
 }
 
@@ -5798,7 +5820,8 @@ static ucs_status_t ucp_rkey_update_config(ucp_rkey_h rkey, ucp_ep_h ep)
     ucs_status_t status;
 
     rkey_cfg_key.ep_cfg_index = ep->cfg_index;
-    status = ucp_worker_rkey_config_get(worker, &rkey_cfg_key, NULL,
+    status = ucp_worker_rkey_config_get(worker, &rkey_cfg_key,
+                                        rkey_cfg->lanes_distance,
                                         &rkey->cfg_index);
     if (status != UCS_OK) {
         return status;
@@ -5809,17 +5832,24 @@ static ucs_status_t ucp_rkey_update_config(ucp_rkey_h rkey, ucp_ep_h ep)
     return UCS_OK;
 }
 
-ucs_status_t ucp_ep_update_rkey_config(ucp_ep_h ep, ucp_rkey_h rkey)
+ucs_status_t ucp_ep_update_config(ucp_ep_h ep,
+                                   const ucp_ep_config_key_t *key)
 {
     ucp_worker_cfg_index_t old_cfg_index = ep->cfg_index;
     ucs_status_t status;
 
-    status = ucp_ep_reconfig_internal(ep, 0);
-    if (status != UCS_OK) {
-        return status;
+    status = ucp_ep_reconfig_key(ep, 0, key);
+    if (status == UCS_OK) {
+        ucp_ep_config_reactivate_worker_ifaces(ep->worker, old_cfg_index,
+                                               ep->cfg_index);
     }
 
-    ucp_ep_config_reactivate_worker_ifaces(ep->worker, old_cfg_index,
-                                           ep->cfg_index);
-    return ucp_rkey_update_config(rkey, ep);
+    return status;
+}
+
+ucs_status_t ucp_ep_update_rkey_config(ucp_ep_h ep, ucp_rkey_h rkey)
+{
+    ucs_status_t status = ucp_ep_update_config(ep, &ucp_ep_config(ep)->key);
+
+    return (status == UCS_OK) ? ucp_rkey_update_config(rkey, ep) : status;
 }

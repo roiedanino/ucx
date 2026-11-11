@@ -14,6 +14,14 @@
 #include <ucp/core/ucp_request.inl>
 
 
+/* An effective endpoint rate already accounts for path sharing. */
+static inline int
+ucp_proto_common_has_effective_bw(const uct_ppn_bandwidth_t *bandwidth)
+{
+    return (bandwidth->dedicated > 0) && (bandwidth->shared == 0);
+}
+
+
 static UCS_F_ALWAYS_INLINE ucs_status_t
 ucp_proto_request_complete_success(ucp_request_t *req)
 {

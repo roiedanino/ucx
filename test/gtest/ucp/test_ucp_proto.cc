@@ -15,6 +15,7 @@
 
 extern "C" {
 #include <ucp/core/ucp_rkey.h>
+#include <ucp/core/ucp_ep.inl>
 #include <ucp/dt/datatype_iter.inl>
 #include <ucp/proto/proto.h>
 #include <ucp/proto/proto_debug.h>
@@ -25,6 +26,8 @@ extern "C" {
 #include <ucp/proto/proto_select.inl>
 #include <ucp/core/ucp_worker.inl>
 #include <uct/api/v2/uct_v2.h>
+#include <uct/base/uct_iface.h>
+#include <uct/base/uct_worker.h>
 }
 
 class test_ucp_proto : public ucp_test {
@@ -852,6 +855,209 @@ UCS_TEST_P(test_ucp_proto, dt_iter_mem_reg)
         test_dt_iter_mem_reg(mem_type, buffer_size, md_map);
     }
 }
+
+class test_ucp_proto_path_bw : public test_ucp_proto {
+protected:
+    ucs_status_t update_bandwidth(double value)
+    {
+        ucs::scoped_async_lock lock(worker()->async);
+        auto ep = sender().ep();
+        auto key = ucp_ep_config(ep)->key;
+        key.lanes[0].path_bandwidth.dedicated = value;
+        key.lanes[0].path_bandwidth.shared    = 0;
+        return ucp_ep_update_config(ep, &key);
+    }
+
+    double bandwidth()
+    {
+        const auto& key = ucp_ep_config(sender().ep())->key;
+        return key.lanes[0].path_bandwidth.dedicated;
+    }
+};
+
+UCS_TEST_P(test_ucp_proto_path_bw, configuration_isolation)
+{
+    sender().connect(&receiver(), get_ep_params(), 1);
+    flush_workers();
+    auto ep = sender().ep();
+    auto sibling = sender().ep(0, 1);
+    const auto old_cfg = ep->cfg_index;
+    const auto sibling_cfg = sibling->cfg_index;
+    const auto old_count = ucp_ep_config(ep)->ep_count;
+    const double value = 1u << 29;
+    ASSERT_UCS_OK(update_bandwidth(value));
+    EXPECT_NE(old_cfg, ep->cfg_index);
+    EXPECT_DOUBLE_EQ(value, bandwidth());
+    EXPECT_EQ(sibling_cfg, sibling->cfg_index);
+    EXPECT_DOUBLE_EQ(0, ucp_ep_config(sibling)->key.lanes[0].
+                                   path_bandwidth.dedicated);
+    EXPECT_EQ(old_count - 1,
+              ucs_array_elem(&worker()->ep_config, old_cfg).ep_count);
+    EXPECT_EQ(1u, ucp_ep_config(ep)->ep_count);
+
+    ASSERT_UCS_OK(update_bandwidth(0));
+    EXPECT_EQ(old_cfg, ep->cfg_index);
+    EXPECT_EQ(old_count, ucp_ep_config(ep)->ep_count);
+
+    struct query_event {
+        uct_ep_h      ep;
+        uct_ep_attr_t attr;
+        ucs_status_t  status;
+    } query = {ucp_ep_get_lane(ep, 0), {}, UCS_INPROGRESS};
+    ucs_callbackq_add_oneshot(&worker()->uct->progress_q, ep,
+            [](void *arg) -> unsigned {
+                auto query = static_cast<query_event*>(arg);
+                query->attr.field_mask = UCT_EP_ATTR_FIELD_BANDWIDTH;
+                query->status = uct_ep_query(query->ep, &query->attr);
+                if (query->status == UCS_OK) {
+                    auto iface = ucs_derived_of(query->ep->iface,
+                                                 uct_base_iface_t);
+                    if (iface->ep_event_cb != NULL) {
+                        iface->ep_event_cb(iface->ep_event_arg, query->ep,
+                                            UCT_EP_EVENT_PATH_SPEED_CHANGE);
+                    }
+                }
+                return 1;
+            }, &query);
+    short_progress_loop();
+    ASSERT_UCS_OK(query.status);
+    const auto& measured = ucp_ep_config(ep)->key.lanes[0].path_bandwidth;
+    EXPECT_GT(query.attr.bandwidth.dedicated + query.attr.bandwidth.shared, 0);
+    EXPECT_LE(measured.dedicated, query.attr.bandwidth.dedicated);
+    EXPECT_GE(measured.dedicated, query.attr.bandwidth.dedicated * 16.0 / 17);
+    EXPECT_LE(measured.shared, query.attr.bandwidth.shared);
+    EXPECT_GE(measured.shared, query.attr.bandwidth.shared * 16.0 / 17);
+    EXPECT_EQ(sibling_cfg, sibling->cfg_index);
+}
+
+UCS_TEST_P(test_ucp_proto_path_bw, repeated_configurations_reuse_cache)
+{
+    flush_ep(sender());
+    const double value = 1u << 30;
+    ASSERT_UCS_OK(update_bandwidth(value));
+    const auto recovered = sender().ep()->cfg_index;
+    ASSERT_UCS_OK(update_bandwidth(value / 2));
+    const auto degraded = sender().ep()->cfg_index;
+    const auto count = ucs_array_length(&worker()->ep_config);
+    for (unsigned i = 0; i < 300; ++i) {
+        ASSERT_UCS_OK(update_bandwidth(value));
+        EXPECT_EQ(recovered, sender().ep()->cfg_index);
+        ASSERT_UCS_OK(update_bandwidth(value / 2));
+        EXPECT_EQ(degraded, sender().ep()->cfg_index);
+    }
+    EXPECT_EQ(count, ucs_array_length(&worker()->ep_config));
+}
+
+UCS_TEST_P(test_ucp_proto_path_bw, inflight_request_retains_config,
+           "RNDV_THRESH=0")
+{
+    flush_ep(sender());
+    const double value = 1u << 30;
+    ASSERT_UCS_OK(update_bandwidth(value));
+    const auto old_cfg = sender().ep()->cfg_index;
+    mem_buffer send_data(UCS_MBYTE, UCS_MEMORY_TYPE_HOST, 0x1234);
+    mem_buffer recv_data(UCS_MBYTE, UCS_MEMORY_TYPE_HOST, 0);
+    ucp_request_param_t param = {};
+    param.op_attr_mask = UCP_OP_ATTR_FLAG_NO_IMM_CMPL;
+    void *send_req = ucp_tag_send_nbx(sender().ep(), send_data.ptr(),
+                                      send_data.size(), 1, &param);
+    ASSERT_TRUE(UCS_PTR_IS_PTR(send_req));
+    auto cleanup = [&](void *request) {
+        void *recv_req = ucp_tag_recv_nbx(receiver().worker(), recv_data.ptr(),
+                                          recv_data.size(), 1, UINT64_MAX,
+                                          &param);
+        EXPECT_UCS_OK(request_wait(request));
+        EXPECT_UCS_OK(request_wait(recv_req));
+    };
+    std::unique_ptr<void, decltype(cleanup)> guard(send_req, cleanup);
+    auto req = static_cast<ucp_request_t*>(send_req) - 1;
+    const auto selected = req->send.proto_config;
+    ASSERT_UCS_OK(update_bandwidth(value / 2));
+    EXPECT_NE(old_cfg, sender().ep()->cfg_index);
+    EXPECT_EQ(selected, req->send.proto_config);
+    EXPECT_EQ(old_cfg, selected->ep_cfg_index);
+    EXPECT_DOUBLE_EQ(value, ucs_array_elem(&worker()->ep_config, old_cfg).
+                                       key.lanes[0].path_bandwidth.dedicated);
+    ucp_proto_query_attr_t attr = {};
+    ucp_proto_config_query(worker(), selected, send_data.size(), &attr);
+    guard.reset();
+    recv_data.pattern_check(0x1234);
+}
+
+UCS_TEST_P(test_ucp_proto_path_bw, port_speed_change_invalidates_sample)
+{
+    flush_ep(sender());
+    mapped_buffer remote(64, receiver());
+    auto rkey = remote.rkey(sender());
+    auto ep = sender().ep();
+    ASSERT_UCS_OK(update_bandwidth(1u << 30));
+    const auto old_cfg = ep->cfg_index;
+    const auto rsc = ucp_ep_config(ep)->key.lanes[0].rsc_index;
+    const auto sys_dev = context()->tl_rscs[rsc].tl_rsc.sys_device;
+    const auto old_rkey_cfg = ucp_rkey_config(worker(), rkey);
+    if (sys_dev != UCS_SYS_DEVICE_ID_UNKNOWN) {
+        auto key = old_rkey_cfg->key;
+        key.ep_cfg_index = old_cfg;
+        key.sys_dev      = sys_dev;
+        ASSERT_UCS_OK(ucp_worker_rkey_config_get(
+                worker(), &key, old_rkey_cfg->lanes_distance,
+                &rkey->cfg_index));
+    }
+    auto wiface = ucp_worker_iface(worker(), rsc);
+    wiface->port_speed = (wiface->port_speed == 15) ? 14 : 15;
+    ++worker()->epoch;
+    ASSERT_UCS_OK(ucp_ep_update_rkey_config(ep, rkey));
+    EXPECT_NE(old_cfg, ep->cfg_index);
+    EXPECT_DOUBLE_EQ(0, bandwidth());
+    const auto updated = ucp_rkey_config(worker(), rkey);
+    EXPECT_EQ(ep->cfg_index, updated->key.ep_cfg_index);
+    EXPECT_EQ((sys_dev == UCS_SYS_DEVICE_ID_UNKNOWN) ?
+                      old_rkey_cfg->key.sys_dev : sys_dev,
+              updated->key.sys_dev);
+    for (ucp_lane_index_t lane = 0; lane < ucp_ep_num_lanes(ep); ++lane) {
+        EXPECT_DOUBLE_EQ(old_rkey_cfg->lanes_distance[lane].latency,
+                         updated->lanes_distance[lane].latency);
+        EXPECT_DOUBLE_EQ(old_rkey_cfg->lanes_distance[lane].bandwidth,
+                         updated->lanes_distance[lane].bandwidth);
+    }
+}
+
+UCS_TEST_P(test_ucp_proto_path_bw,
+           full_cache_preserves_current_and_reuses_recovery)
+{
+    flush_ep(sender());
+    auto ep = sender().ep();
+    const double value = 1u << 30;
+    ASSERT_UCS_OK(update_bandwidth(value));
+    const auto recovered = ep->cfg_index;
+    ASSERT_UCS_OK(update_bandwidth(value / 2));
+    const auto degraded = ep->cfg_index;
+    auto key = ucp_ep_config(ep)->key;
+    ucp_worker_cfg_index_t unused;
+    while (ucs_array_length(&worker()->ep_config) < UCP_WORKER_MAX_EP_CONFIG) {
+        const auto count = ucs_array_length(&worker()->ep_config);
+        key.lanes[0].path_bandwidth.dedicated = value * 4 + count;
+        ASSERT_UCS_OK(ucp_worker_get_ep_config(
+                worker(), &key, UCP_EP_INIT_FLAG_INTERNAL, &unused));
+        ASSERT_EQ(count + 1, ucs_array_length(&worker()->ep_config));
+    }
+    const auto errors_before = m_errors.size();
+    {
+        scoped_log_handler log(wrap_errors_logger);
+        EXPECT_EQ(UCS_ERR_EXCEEDS_LIMIT, update_bandwidth(value / 4));
+    }
+    ASSERT_EQ(errors_before + 1, m_errors.size());
+    const auto limit = std::to_string(UCP_WORKER_MAX_EP_CONFIG);
+    EXPECT_EQ("too many ep configurations: " + limit + " (max: " + limit + ")",
+              m_errors.back());
+    EXPECT_EQ(degraded, ep->cfg_index);
+    EXPECT_DOUBLE_EQ(value / 2, bandwidth());
+    ASSERT_UCS_OK(update_bandwidth(value));
+    EXPECT_EQ(recovered, ep->cfg_index);
+    EXPECT_EQ(UCP_WORKER_MAX_EP_CONFIG, ucs_array_length(&worker()->ep_config));
+}
+
+UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_path_bw, rcx, "rc_x")
 
 UCP_INSTANTIATE_TEST_CASE(test_ucp_proto)
 UCP_INSTANTIATE_TEST_CASE_TLS_GPU_AWARE(test_ucp_proto, shm_ipc,

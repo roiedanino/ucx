@@ -219,6 +219,7 @@ typedef struct ucp_ep_config_key_lane {
     ucp_lane_type_mask_t lane_types; /* Which types of operations this lane
                                         was selected for */
     uint8_t              port_speed; /* Quantized port speed */
+    uct_ppn_bandwidth_t   path_bandwidth; /* Cached destination/lane sample */
     size_t               seg_size; /* Maximal fragment size which can be
                                       received by the peer */
 } ucp_ep_config_key_lane_t;
@@ -1275,6 +1276,10 @@ ucs_status_t ucp_ep_failover_reconfig(ucp_ep_h ucp_ep,
  * @return Error code as defined by @ref ucs_status_t
  */
 ucs_status_t ucp_ep_update_rkey_config(ucp_ep_h ep, ucp_rkey_h rkey);
+
+/* Reconfigure through the normal immutable worker configuration cache. */
+ucs_status_t ucp_ep_update_config(ucp_ep_h ep,
+                                   const ucp_ep_config_key_t *key);
 
 ucs_status_t ucp_stub_iface_open(ucs_status_t status, uct_iface_h *iface_p);
 

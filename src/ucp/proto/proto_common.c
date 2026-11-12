@@ -358,6 +358,8 @@ ucp_proto_common_get_lane_perf(const ucp_proto_common_init_params_t *params,
     ucs_sys_dev_distance_t distance;
     size_t tl_min_frag, tl_max_frag;
     uct_perf_attr_t perf_attr;
+    uct_ppn_bandwidth_t ep_bandwidth;
+    int has_ep_bandwidth;
     ucs_sys_device_t sys_dev;
     ucs_status_t status;
     char bdf_name[32];
@@ -396,6 +398,17 @@ ucp_proto_common_get_lane_perf(const ucp_proto_common_init_params_t *params,
         goto err_deref_perf_node;
     }
 
+    ep_bandwidth     = params->super.ep_config_key->lanes[lane].path_bandwidth;
+    has_ep_bandwidth = (ep_bandwidth.dedicated + ep_bandwidth.shared) > 0;
+    /* Keep operation-specific limits on shared endpoint estimates. */
+    if (has_ep_bandwidth &&
+        (ucp_proto_common_has_effective_bw(&ep_bandwidth) ||
+         (ucp_proto_common_iface_bandwidth(context, &ep_bandwidth) <
+          ucp_proto_common_iface_bandwidth(context,
+                                           &perf_attr.path_bandwidth)))) {
+        perf_attr.path_bandwidth = ep_bandwidth;
+    }
+
     tl_perf->send_pre_overhead  = perf_attr.send_pre_overhead + params->overhead;
     tl_perf->send_post_overhead = perf_attr.send_post_overhead;
     tl_perf->recv_overhead      = perf_attr.recv_overhead + params->overhead;
@@ -404,6 +417,11 @@ ucp_proto_common_get_lane_perf(const ucp_proto_common_init_params_t *params,
     tl_perf->path_ratio         = ucp_proto_common_iface_bandwidth(
                                       context, &perf_attr.path_bandwidth) /
                                   tl_perf->bandwidth;
+    if (ucp_proto_common_has_effective_bw(&ep_bandwidth)) {
+        tl_perf->bandwidth = ucp_proto_common_iface_bandwidth(
+                                    context, &perf_attr.path_bandwidth);
+    }
+
     tl_perf->latency            = ucp_tl_iface_latency(context,
                                                        &perf_attr.latency) +
                                   params->latency;
